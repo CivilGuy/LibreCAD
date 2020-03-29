@@ -66,7 +66,6 @@ public slots:
     bool slotFileOpen(const QString& fileName, RS2::FormatType type);
     bool slotFileSave(bool &cancelled, bool isAutoSave=false);
     bool slotFileSaveAs(bool &cancelled);
-    bool slotFileClose(bool force);
     void slotFilePrint();
     void slotZoomAuto();
 
@@ -85,6 +84,8 @@ public:
 
     void addChildWindow(QC_MDIWindow* w);
     void removeChildWindow(QC_MDIWindow* w);
+	QList<QC_MDIWindow*>& getChildWindows();
+
     QC_MDIWindow* getPrintPreview();
 
     // Methods from RS_LayerListListener Interface:
@@ -98,19 +99,18 @@ public:
     }
 
     /**
-     * Sets the parent window that will be notified if this 
+     * Sets the parent window that will be notified if this window
+     * is closed or NULL.
      */
-	void setParentWindow(QC_MDIWindow* p);
+    void setParentWindow(QC_MDIWindow* p);
+    QC_MDIWindow* getParentWindow() const;
+
     /**
      * @return The MDI window id.
      */
 	int getId() const;
 
-	bool closeMDI(bool force, bool ask=true);
-
-	void setForceClosing(bool on);
-
-    friend std::ostream& operator << (std::ostream& os, QC_MDIWindow& w);
+	friend std::ostream& operator << (std::ostream& os, QC_MDIWindow& w);
 
     bool has_children();
 
@@ -144,11 +144,6 @@ private:
      */
     QC_MDIWindow* parentWindow{nullptr};
     QMdiArea* cadMdiArea;
-
-	/**
-	 * If flag is set, the user will not be asked about closing this file.
-	 */
-    bool forceClosing{false};
 };
 
 

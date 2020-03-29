@@ -816,7 +816,7 @@ void RS_GraphicView::zoomPage() {
 		return;
 	}
 
-	RS_Vector s = graphic->getPaperSize()/graphic->getPaperScale();
+	RS_Vector s = graphic->getPrintAreaSize()/graphic->getPaperScale();
 
 	double fx, fy;
 
@@ -979,9 +979,8 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e)
 		w = 0;
 	}
 
-#if 1 /*TRUE*/
 	// - Scale pen width.
-	// - Notes: pen width is not scaled on print and print preview.
+	// - By default pen width is not scaled on print and print preview.
 	//   This is the standard (AutoCAD like) behaviour.
 	// bug# 3437941
 	// ------------------------------------------------------------
@@ -996,7 +995,7 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e)
 		{
 			uf = RS_Units::convert(1.0, RS2::Millimeter, graphic->getUnit());
 
-			if (	(isPrinting() || isPrintPreview()) &&
+			if ((isPrinting() || isPrintPreview()) && !scaleLineWidth &&
 					graphic->getPaperScale() > RS_TOLERANCE )
 			{
 				wf = 1.0 / graphic->getPaperScale();
@@ -1011,27 +1010,6 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e)
 		pen.setScreenWidth(0);
 	}
 
-#else
-
-	// - Scale pen width.
-	// - Notes: pen width is scaled on print and print preview.
-	//   This is not the standard (AutoCAD like) behaviour.
-	// --------------------------------------------------------
-	if (!draftMode)
-	{
-		double	uf = 1.0;	//	Unit factor.
-
-		RS_Graphic* graphic = container->getGraphic();
-
-        if (graphic)
-			uf = RS_Units::convert(1.0, RS2::Millimeter, graphic->getUnit());
-
-		pen.setScreenWidth(toGuiDX(w / 100.0 * uf));
-	}
-	else
-		pen.setScreenWidth(0);
-#endif
-
 	// prevent drawing with 1-width which is slow:
 	if (RS_Math::round(pen.getScreenWidth())==1) {
 		pen.setScreenWidth(0.0);
@@ -1042,15 +1020,18 @@ void RS_GraphicView::setPenForEntity(RS_Painter *painter,RS_Entity *e)
 		pen.setColor(foreground);
 	}
 
-	// this entity is selected:
-	if (e->isSelected()) {
-		pen.setLineType(RS2::DotLine);
-		pen.setColor(selectedColor);
-	}
+	if (!isPrinting() && !isPrintPreview())
+	{
+		// this entity is selected:
+		if (e->isSelected()) {
+			pen.setLineType(RS2::DotLine);
+			pen.setColor(selectedColor);
+		}
 
-	// this entity is highlighted:
-	if (e->isHighlighted()) {
-		pen.setColor(highlightedColor);
+		// this entity is highlighted:
+		if (e->isHighlighted()) {
+			pen.setColor(highlightedColor);
+		}
 	}
 
 	// deleting not drawing:
@@ -1146,7 +1127,7 @@ void RS_GraphicView::drawEntity(RS_Painter *painter, RS_Entity* e, double& patte
 	}
 
 	// draw reference points:
-	if (e->isSelected()) {
+	if (e->isSelected() && !(isPrinting() || isPrintPreview())) {
 		if (!e->isParentSelected()) {
 			RS_VectorSolutions const& s = e->getRefPoints();
 
@@ -1409,34 +1390,66 @@ void RS_GraphicView::drawPaper(RS_Painter *painter) {
 	painter->setPen(QColor(Qt::gray));
 
 	RS_Vector pinsbase = graphic->getPaperInsertionBase();
-	RS_Vector size = graphic->getPaperSize();
+	RS_Vector printAreaSize = graphic->getPrintAreaSize();
 	double scale = graphic->getPaperScale();
 
 	RS_Vector v1 = toGui((RS_Vector(0,0)-pinsbase)/scale);
-	RS_Vector v2 = toGui((size-pinsbase)/scale);
+	RS_Vector v2 = toGui((printAreaSize-pinsbase)/scale);
+
+	int marginLeft = (int)(graphic->getMarginLeftInUnits() * factor.x / scale);
+	int marginTop = (int)(graphic->getMarginTopInUnits() * factor.y / scale);
+	int marginRight = (int)(graphic->getMarginRightInUnits() * factor.x / scale);
+	int marginBottom = (int)(graphic->getMarginBottomInUnits() * factor.y / scale);
+
+	int printAreaW = (int)(v2.x-v1.x);
+	int printAreaH = (int)(v2.y-v1.y);
+
+	int paperX1 = (int)v1.x;
+	int paperY1 = (int)v1.y;
+	// Don't show margins between neighbor pages.
+	int paperW = printAreaW + marginLeft + marginRight;
+	int paperH = printAreaH - marginTop - marginBottom;
+
+	int numX = graphic->getPagesNumHoriz();
+	int numY = graphic->getPagesNumVert();
 
 	// gray background:
 	painter->fillRect(0,0, getWidth(), getHeight(),
 					  RS_Color(200,200,200));
 
-	// shadow
-	painter->fillRect(
-				(int)(v1.x)+6, (int)(v1.y)+6,
-				(int)((v2.x-v1.x)), (int)((v2.y-v1.y)),
-				RS_Color(64,64,64));
+	// shadow:
+	painter->fillRect(paperX1+6, paperY1+6, paperW, paperH,
+					  RS_Color(64,64,64));
 
 	// border:
-	painter->fillRect(
-				(int)(v1.x), (int)(v1.y),
-				(int)((v2.x-v1.x)), (int)((v2.y-v1.y)),
-				RS_Color(64,64,64));
+	painter->fillRect(paperX1, paperY1, paperW, paperH,
+					  RS_Color(64,64,64));
 
-	// paper
-	painter->fillRect(
-				(int)(v1.x)+1, (int)(v1.y)-1,
-				(int)((v2.x-v1.x))-2, (int)((v2.y-v1.y))+2,
-				RS_Color(255,255,255));
+	// paper:
+	painter->fillRect(paperX1+1, paperY1-1, paperW-2, paperH+2,
+					  RS_Color(180,180,180));
 
+	// print area:
+	painter->fillRect(paperX1+1+marginLeft, paperY1-1-marginBottom,
+					  printAreaW-2, printAreaH+2,
+					  RS_Color(255,255,255));
+
+	// don't paint boundaries if zoom is to small
+	if (qMin(fabs(printAreaW/numX), fabs(printAreaH/numY)) > 2) {
+		// boundaries between pages:
+		for (int pX = 1; pX < numX; pX++) {
+			double offset = ((double)printAreaW*pX)/numX;
+			painter->fillRect(paperX1+marginLeft+offset, paperY1,
+							  1, paperH,
+							  RS_Color(64,64,64));
+		}
+		for (int pY = 1; pY < numY; pY++) {
+			double offset = ((double)printAreaH*pY)/numY;
+			painter->fillRect(paperX1, paperY1-marginBottom+offset,
+							  paperW, 1,
+							  RS_Color(64,64,64));
+		}
+	}
 }
 
 

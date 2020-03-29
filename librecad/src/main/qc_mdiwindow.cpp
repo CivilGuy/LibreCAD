@@ -2,6 +2,7 @@
 **
 ** This file is part of the LibreCAD project, a 2D CAD program
 **
+** Copyright (C) 2019 Shawn Curry (noneyabiz@mail.wasent.cz)
 ** Copyright (C) 2010 R. van Twisk (librecad@rvt.dds.nl)
 ** Copyright (C) 2001-2003 RibbonSoft. All rights reserved.
 **
@@ -140,10 +141,6 @@ int QC_MDIWindow::getId() const{
 	return id;
 }
 
-void QC_MDIWindow::setForceClosing(bool on) {
-	forceClosing = on;
-}
-
 RS_EventHandler* QC_MDIWindow::getEventHandler() const{
 	if (graphicView) {
 		return graphicView->getEventHandler();
@@ -154,8 +151,13 @@ RS_EventHandler* QC_MDIWindow::getEventHandler() const{
 }
 
 void QC_MDIWindow::setParentWindow(QC_MDIWindow* p) {
-	RS_DEBUG->print("setParentWindow");
+	RS_DEBUG->print("QC_MDIWindow::setParentWindow");
 	parentWindow = p;
+}
+
+QC_MDIWindow* QC_MDIWindow::getParentWindow() const {
+	RS_DEBUG->print("QC_MDIWindow::getParentWindow");
+	return parentWindow;
 }
 
 RS_Graphic* QC_MDIWindow::getGraphic() const {
@@ -199,6 +201,11 @@ void QC_MDIWindow::removeChildWindow(QC_MDIWindow* w) {
 
 }
 
+QList<QC_MDIWindow*>& QC_MDIWindow::getChildWindows()
+{
+	return childWindows;
+}
+
 
 
 /**
@@ -214,86 +221,18 @@ QC_MDIWindow* QC_MDIWindow::getPrintPreview() {
 }
 
 
-
-/**
- * closes this MDI window.
- *
- * @param force Disable cancel button (demo versions)
- * @param ask Ask user before closing.
- */
-bool QC_MDIWindow::closeMDI(bool force, bool ask)
-{
-    RS_DEBUG->print("QC_MDIWindow::closeMDI begin");
-    // should never happen:
-    if (document==NULL) {
-        return true;
-    }
-
-    bool ret = false;
-
-    // This is a block and we don't need to ask the user for closing
-    //   since it's still available in the parent drawing after closing.
-    if (parentWindow)
-    {
-        RS_DEBUG->print("  closing block");
-        RS_DEBUG->print("  notifying parent about closing this window");
-        parentWindow->removeChildWindow(this);
-        emit(signalClosing(this));
-        ret = true;
-    }
-
-    // This is a graphic document. ask user for closing.
-    else if (!ask || slotFileClose(force)) {
-        RS_DEBUG->print("  closing graphic");
-
-        emit(signalClosing(this));
-
-        if (childWindows.length() > 0)
-        {
-            for(auto p: childWindows)
-            {
-                cadMdiArea->removeSubWindow(p);
-                p->close();
-            }
-		childWindows.clear();
-        }
-
-        ret = true;
-    }
-
-    // User decided not to close graphic document:
-    else {
-        ret = false;
-    }
-
-    return (ret || force);
-}
-
-
-
 /**
  * Called by Qt when the user closes this MDI window.
  */
 void QC_MDIWindow::closeEvent(QCloseEvent* ce) {
-
-    auto view = getGraphicView();
-    view->killAllActions();
-
     RS_DEBUG->print("QC_MDIWindow::closeEvent begin");
-    if (forceClosing) {
-        ce->accept();
 
-        return;
-    }
-
-    if (closeMDI(false)) {
-        ce->accept();
-    } else {
-        ce->ignore();
-    }
+    emit(signalClosing(this));
+    ce->accept(); // handling delegated to QApplication
 
     RS_DEBUG->print("QC_MDIWindow::closeEvent end");
 }
+
 
 /**
  * Called when the current pen (color, style, width) has changed.
@@ -447,6 +386,9 @@ bool QC_MDIWindow::slotFileSave(bool &cancelled, bool isAutoSave) {
             if (document->getFilename().isEmpty()) {
                 ret = slotFileSaveAs(cancelled);
             } else {
+				QFileInfo info(document->getFilename());
+				if (!info.isWritable())
+					return false;
                 QApplication::setOverrideCursor( QCursor(Qt::WaitCursor) );
                 ret = document->save();
                 QApplication::restoreOverrideCursor();
@@ -475,7 +417,7 @@ bool QC_MDIWindow::slotFileSaveAs(bool &cancelled) {
 
     QG_FileDialog dlg(this);
     QString fn = dlg.getSaveFile(&t);
-	if (document && !fn.isEmpty()) {
+    if (document && !fn.isEmpty()) {
         QApplication::setOverrideCursor( QCursor(Qt::WaitCursor) );
         document->setGraphicView(graphicView);
         ret = document->saveAs(fn, t, true);
@@ -487,72 +429,6 @@ bool QC_MDIWindow::slotFileSaveAs(bool &cancelled) {
     }
 
     return ret;
-}
-
-
-/**
- * Requests the closing of this MDI window.
- *
- * @param force Force closing by disabling the cancel button (for demo versions).
- */
-bool QC_MDIWindow::slotFileClose(bool force) {
-    RS_DEBUG->print("QC_MDIWindow::slotFileClose()");
-
-    //return immediately, if forceClosing is set
-    if(forceClosing) return true;
-
-    bool succ = true;
-    int exit = 0;
-
-	if(document && document->isModified()) {
-        QG_ExitDialog dlg(this);
-
-        dlg.setForce(force);
-        if (document->getFilename().isEmpty()) {
-            dlg.setText(tr("Do you really want to close the drawing?"));
-        } else {
-            QString fn = document->getFilename();
-            if (fn.length() > 50) {
-                fn = QString("%1...%2").arg(fn.left(24)).arg(fn.right(24));
-            }
-            dlg.setText(tr("Do you really want to close the file\n%1?")
-                        .arg(fn));
-        }
-        dlg.setTitle(tr("Closing Drawing"));
-
-        bool again;
-        bool cancelled;
-        do {
-            again = false;
-            exit = dlg.exec();
-
-            switch (exit) {
-            case 0: // cancel
-                succ = false;
-                forceClosing=false;
-                break;
-            case 1: // leave
-                succ = true;
-                forceClosing=true;
-                break;
-            case 2: // save
-                succ = slotFileSave(cancelled);
-                again = !succ || cancelled;
-                break;
-            case 3: // save as
-                succ = slotFileSaveAs(cancelled);
-                again = !succ || cancelled;
-                break;
-            default:
-                forceClosing=false;
-                break;
-            }
-        } while (again);
-    } else {
-        succ = true;
-    }
-
-    return forceClosing || succ;
 }
 
 

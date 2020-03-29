@@ -171,6 +171,7 @@
         <file>mouse.svg</file>
         <file>fit_to_page.svg</file>
         <file>center_to_page.svg</file>
+        <file>multi_pages.svg</file>
         <file>black_n_white_mode.svg</file>
         <file>mtext_align_bottomcenter.svg</file>
         <file>mtext_align_bottomleft.svg</file>
@@ -197,5 +198,8 @@
         <file>line_polygon_cen_tan.svg</file>
         <file>noconstruction.svg</file>
         <file>noprint.svg</file>
+        <file>close_all.svg</file>
+        <file>save_all.svg</file>
+        <file>scaleLineWidth.svg</file>
     </qresource>
 </RCC>

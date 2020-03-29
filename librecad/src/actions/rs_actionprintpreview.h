@@ -64,7 +64,6 @@ public:
 	void showOptions() override;
 	void hideOptions() override;
 
-	void finish(bool /*updateTB*/ = true ) override{}
 	void updateMouseCursor() override;
 
     void center();
@@ -72,7 +71,9 @@ public:
     bool setScale(double f, bool autoZoom = true);
 	double getScale() const;
     void printWarning(const QString& s);
+    void calcPagesNum();
 
+    void setLineWidthScaling(bool state);
 	void setBlackWhite(bool bw);
     RS2::Unit getUnit();
     void setPaperScaleFixed(bool fixed);
@@ -82,7 +83,6 @@ public:
 private:
 
 	bool hasOptions;
-	bool scaleFixed;
 	bool m_bPaperOffset;
 	struct Points;
 	std::unique_ptr<Points> pPoints;

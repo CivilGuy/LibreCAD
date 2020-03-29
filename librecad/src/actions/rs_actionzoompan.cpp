@@ -98,9 +98,16 @@ void RS_ActionZoomPan::mousePressEvent(QMouseEvent* e) {
 
 
 
-void RS_ActionZoomPan::mouseReleaseEvent(QMouseEvent* /*e*/) {
-        setStatus(SetPanEnd);
-        trigger();
+void RS_ActionZoomPan::mouseReleaseEvent(QMouseEvent* e) {
+	switch (e->button()) {
+	case Qt::MiddleButton:
+	case Qt::RightButton:
+		setStatus(SetPanEnd);
+		break;
+	default:
+		setStatus(SetPanStart);
+	}
+	trigger();
     //RS_DEBUG->print("RS_ActionZoomPan::mousePressEvent(): %f %f", v1.x, v1.y);
 }
 

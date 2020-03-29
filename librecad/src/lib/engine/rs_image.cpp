@@ -132,6 +132,7 @@ void RS_Image::update() {
 	img.reset(new QImage(data.file));
 	if (!img->isNull()) {
 		data.size = RS_Vector(img->width(), img->height());
+		calculateBorders(); // image update need this.
     }
 
     RS_DEBUG->print("RS_Image::update: OK");
@@ -396,7 +397,7 @@ void RS_Image::draw(RS_Painter* painter, RS_GraphicView* view, double& /*pattern
                      view->toGui(data.insertionPoint),
                      angle, scale);
 
-    if (isSelected()) {
+    if (isSelected() && !(view->isPrinting() || view->isPrintPreview())) {
         RS_VectorSolutions sol = getCorners();
 		for (size_t i = 0; i < sol.size(); ++i){
 			size_t const j = (i+1)%sol.size();
