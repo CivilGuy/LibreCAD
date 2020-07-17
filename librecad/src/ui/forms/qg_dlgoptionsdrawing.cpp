@@ -125,8 +125,8 @@ void QG_DlgOptionsDrawing::init() {
     cbDimAUnit->insertItems(0, aunitList);
 
     // Paper format:
-    for (int i=RS2::Custom; i<=RS2::NPageSize; i++) {
-		cbPaperFormat->addItem(RS_Units::paperFormatToString(static_cast<RS2::PaperFormat>(i)));
+    for (RS2::PaperFormat i = RS2::FirstPaperFormat; RS2::NPageFormat > i; i = static_cast<RS2::PaperFormat>(i + 1)) {
+        cbPaperFormat->addItem( RS_Units::paperFormatToString( i));
     }
     // Paper preview:
     gvPaperPreview->setScene(paperScene);
@@ -177,11 +177,13 @@ void QG_DlgOptionsDrawing::setGraphic(RS_Graphic* g) {
     cbPaperFormat->setCurrentIndex((int)format);
 
     // paper orientation:
+    rbLandscape->blockSignals(true);
     if (landscape) {
         rbLandscape->setChecked(true);
     } else {
         rbPortrait->setChecked(true);
     }
+    rbLandscape->blockSignals(false);
 	if(format==RS2::Custom){
         RS_Vector s=graphic->getPaperSize();
         lePaperWidth->setText(QString("%1").setNum(s.x,'g',5));
@@ -419,12 +421,11 @@ void QG_DlgOptionsDrawing::validate() {
         graphic->addVariable("$AUNITS", cbAngleFormat->currentIndex(), 70);
         graphic->addVariable("$AUPREC", cbAnglePrecision->currentIndex(), 70);
 
+        RS2::PaperFormat currentFormat {static_cast<RS2::PaperFormat>(cbPaperFormat->currentIndex())};
         // paper:
-        graphic->setPaperFormat(
-					static_cast<RS2::PaperFormat>(cbPaperFormat->currentIndex()),
-                    rbLandscape->isChecked());
+        graphic->setPaperFormat( currentFormat, rbLandscape->isChecked());
         // custom paper size:
-		if (static_cast<RS2::PaperFormat>(cbPaperFormat->currentIndex()) == RS2::Custom) {
+        if (RS2::Custom == currentFormat) {
             graphic->setPaperSize(RS_Vector(RS_Math::eval(lePaperWidth->text()),
                                             RS_Math::eval(lePaperHeight->text())));
 			bool landscape;
@@ -768,17 +769,23 @@ void  QG_DlgOptionsDrawing::updatePaperSize() {
 	}
 	graphic->setPaperSize(s);
 
-	lePaperWidth->setText(QString("%1").setNum(s.x,'g',5));
-	lePaperHeight->setText(QString("%1").setNum(s.y,'g',5));
+    lePaperWidth->blockSignals(true);
+    lePaperWidth->setText(QString("%1").setNum(s.x,'g',5));
+    lePaperWidth->blockSignals(false);
 
-    if (cbPaperFormat->currentIndex()==0) {
+    lePaperHeight->blockSignals(true);
+    lePaperHeight->setText(QString("%1").setNum(s.y,'g',5));
+    lePaperHeight->blockSignals(false);
+
+    if (RS2::Custom == cbPaperFormat->currentIndex()) {
         lePaperWidth->setEnabled(true);
         lePaperHeight->setEnabled(true);
     } else {
         lePaperWidth->setEnabled(false);
         lePaperHeight->setEnabled(false);
     }
-	updatePreview();
+    updatePreview();
+    updatePaperPreview();
 }
 
 
@@ -805,6 +812,13 @@ void QG_DlgOptionsDrawing::updateUnitLabels() {
 void QG_DlgOptionsDrawing::updatePaperPreview() {
     double paperW = RS_Math::eval(lePaperWidth->text());
     double paperH = RS_Math::eval(lePaperHeight->text());
+    rbLandscape->blockSignals(true);
+    if (paperW > paperH) {
+        rbLandscape->setChecked(true);
+    } else {
+        rbPortrait->setChecked(true);
+    }
+    rbLandscape->blockSignals(false);
     /* Margins of preview are 5 px */
     int previewW = gvPaperPreview->width() - 10;
     int previewH = gvPaperPreview->height() - 10;

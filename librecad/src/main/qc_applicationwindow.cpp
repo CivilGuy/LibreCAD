@@ -1005,12 +1005,7 @@ void QC_ApplicationWindow::slotWindowActivated(QMdiSubWindow* w) {
 
         coordinateWidget->setGraphic(m->getGraphic());
 
-        // Only graphics show blocks. (blocks don't)
-        if (m->getDocument()->rtti()==RS2::EntityGraphic) {
-            blockWidget->setBlockList(m->getDocument()->getBlockList());
-        } else {
-            blockWidget->setBlockList(nullptr);
-        }
+        blockWidget->setBlockList(m->getDocument()->getBlockList());
 
         // Update all inserts in this graphic (blocks might have changed):
         m->getDocument()->updateInserts();
@@ -1053,7 +1048,7 @@ void QC_ApplicationWindow::slotWindowActivated(QMdiSubWindow* w) {
             ai->hideOptions();
         }
     }
-    if (m->getGraphicView()->getCurrentAction()) {
+    if (m && m->getGraphicView()->getCurrentAction()) {
         m->getGraphicView()->getCurrentAction()->showOptions();
     }
 
@@ -1126,10 +1121,10 @@ void QC_ApplicationWindow::slotWindowsMenuAboutToShow() {
 		menuItem->setCheckable(true);
 		menuItem->setChecked(RS_SETTINGS->readNumEntry("/SubWindowMode") == RS2::Maximized);
 
-		menuItem = menu->addAction(tr("&Cascade"), this, SLOT(slotCascade()));
-		menuItem = menu->addAction(tr("&Tile"), this, SLOT(slotTile()));
-		menuItem = menu->addAction(tr("Tile &Vertically"), this, SLOT(slotTileVertical()));
-		menuItem = menu->addAction(tr("Tile &Horizontally"), this, SLOT(slotTileHorizontal()));
+        menu->addAction(tr("&Cascade"), this, SLOT(slotCascade()));
+        menu->addAction(tr("&Tile"), this, SLOT(slotTile()));
+        menu->addAction(tr("Tile &Vertically"), this, SLOT(slotTileVertical()));
+        menu->addAction(tr("Tile &Horizontally"), this, SLOT(slotTileHorizontal()));
 	}
 	
 
@@ -1511,7 +1506,6 @@ QC_MDIWindow* QC_ApplicationWindow::slotFileNew(RS_Document* doc) {
 
     w->setWindowIcon(QIcon(":/main/document.png"));
 
-    // only graphics offer block lists, blocks don't
     RS_DEBUG->print("  adding listeners");
     RS_Graphic* graphic = w->getDocument()->getGraphic();
 
@@ -1661,9 +1655,9 @@ void QC_ApplicationWindow::slotFileNewTemplate() {
     QMdiSubWindow* old=activedMdiSubWindow;
     QRect geo;
     bool maximized=false;
-    if(old ) {//save old geometry
-        geo=activedMdiSubWindow->geometry();
-        maximized=activedMdiSubWindow->isMaximized();
+    if(old != nullptr ) {//save old geometry
+        geo=old->geometry();
+        maximized=old->isMaximized();
     }
     QC_MDIWindow* w =nullptr;
 	if (!slotFileNewHelper(fileName, w)) {
@@ -1793,9 +1787,9 @@ void QC_ApplicationWindow::
 
         qApp->processEvents(QEventLoop::AllEvents, 1000);
 
-        if(old) {//save old geometry
-            geo=activedMdiSubWindow->geometry();
-            maximized=activedMdiSubWindow->isMaximized();
+        if(old != nullptr) {//save old geometry
+            geo=old->geometry();
+            maximized=old->isMaximized();
         }
 
         // open the file in the new view:
@@ -1937,7 +1931,7 @@ void QC_ApplicationWindow::slotFileSaveAs() {
 bool QC_ApplicationWindow::slotFileSaveAll()
 {
 	QC_MDIWindow* current = getMDIWindow();
-	bool result;
+    bool result {true};
 	for (auto w : window_list) {
 		if (w && w->getDocument()->isModified()) {
 			result = doSave(w);
@@ -2145,20 +2139,17 @@ bool QC_ApplicationWindow::slotFileExport(const QString& name,
     // set painter with buffer
     RS_PainterQt painter(buffer);
 
-    // black background:
     if (black) {
-//RLZ        painter.setBackgroundColor(RS_Color(0,0,0));
-		painter.setBackground(Qt::black);
+        painter.setBackground( Qt::black);
+        if (bw) {
+            painter.setDrawingMode( RS2::ModeWB);
+        }
     }
-    // white background:
     else {
-//RLZ        painter.setBackgroundColor(RS_Color(255,255,255));
-		painter.setBackground(Qt::white);
-    }
-
-    // black/white:
-    if (bw) {
-        painter.setDrawingMode(RS2::ModeBW);
+        painter.setBackground(Qt::white);
+        if (bw) {
+            painter.setDrawingMode( RS2::ModeBW);
+        }
     }
 
     painter.eraseRect(0,0, size.width(), size.height());
@@ -2591,14 +2582,13 @@ void QC_ApplicationWindow::slotFilePrintPreview(bool on)
                 RS_DEBUG->print("QC_ApplicationWindow::slotFilePrintPreview(): create");
 
                 QC_MDIWindow* w = new QC_MDIWindow(parent->getDocument(), mdiAreaCAD, 0);
-                QMdiSubWindow* subWindow=mdiAreaCAD->addSubWindow(w);
+                mdiAreaCAD->addSubWindow(w);
                 parent->addChildWindow(w);
                 connect(w, SIGNAL(signalClosing(QC_MDIWindow*)),
                         this, SLOT(slotFileClosing(QC_MDIWindow*)));
 
                 w->setWindowTitle(tr("Print preview for %1").arg(parent->windowTitle()));
                 w->setWindowIcon(QIcon(":/main/document.png"));
-                w->slotZoomAuto();
                 QG_GraphicView* gv = w->getGraphicView();
                 gv->device = settings.value("Hardware/Device", "Mouse").toString();
                 gv->setPrintPreview(true);
@@ -2633,6 +2623,8 @@ void QC_ApplicationWindow::slotFilePrintPreview(bool on)
 
                 doActivate(w);
                 doArrangeWindows(RS2::CurrentMode);
+
+                gv->zoomAuto(false);
 
                 if(graphic){
                     bool bigger = graphic->isBiggerThanPaper();
@@ -3042,7 +3034,7 @@ void QC_ApplicationWindow::createNewDocument(
         const QString& fileName, RS_Document* doc) {
 
     slotFileNew(doc);
-    if (fileName!=QString::null && getDocument()) {
+    if (fileName!=QString() && getDocument()) {
         getDocument()->setFilename(fileName);
     }
 }
@@ -3657,4 +3649,21 @@ void QC_ApplicationWindow::invokeLicenseWindow()
     viewer->setFile("readme");
 
     dlg.exec();
+}
+
+
+QC_MDIWindow* QC_ApplicationWindow::getWindowWithDoc(const RS_Document* doc)
+{
+    QC_MDIWindow* wwd = nullptr;
+
+    if (doc) {
+        foreach (QC_MDIWindow* w, window_list) {
+            if (w && w->getDocument() == doc) {
+                wwd = w;
+                break;
+            }
+        }
+    }
+
+    return wwd;
 }
