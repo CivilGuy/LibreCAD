@@ -2,6 +2,7 @@
 **
 ** This file is part of the LibreCAD project, a 2D CAD program
 **
+** Copyright (C) 2020 David J. Mitchell (damitch@civilguy.com)
 ** Copyright (C) 2010 R. van Twisk (librecad@rvt.dds.nl)
 ** Copyright (C) 2001-2003 RibbonSoft. All rights reserved.
 **
@@ -28,12 +29,95 @@
 #ifndef RS_MTEXT_H
 #define RS_MTEXT_H
 
+#include <memory>
 #include "rs_entitycontainer.h"
+
+#define STDLINESPACE 1.666667
+// Obscure note in Dxf ref says that 5/3 is the standard, but may be modified by code 44 value.
+#define SUPERSUBFAC   0.58
+// Multiplier for full text height
+#define DROPSUBSCRIPT 0.33
+#define RAISESUPERSCR 0.33
+// Above 3 values taken from Wikipedia 
+#define DROPUNDERLINE 0.33
+// Same as underscore char in standard.lff 
+
+/**
+ * Helper class for working with 'rich codes' embedded in MText
+ */
+struct LC_CodeTag {
+
+    LC_CodeTag() = default;
+    LC_CodeTag(QString& rawtxt, unsigned int* nposn);
+    ~LC_CodeTag();
+     
+    void loadFrom(const QString& rawtxt, unsigned int* nposn);
+    
+    /** for spanning codes, this->text is the simple command itself
+     *  for settings codes, this->text is the entire command and value, including the last semicolon. */
+    QString      text;
+    bool         isstack;    
+    double       dblVal;
+    int          intVal;
+    QString      strVal;
+    unsigned int starttag, endtag;
+    
+    unsigned int end() { return endtag; } 
+    bool isspantag();
+    bool isStack() { return isstack; }
+    unsigned int getMatchingEnd(const QString& delim, unsigned int start = 0, unsigned short level = 0);
+    unsigned int getFinalEnd();
+};
+
+/**
+ * Helper class for working with tab stops and list formatting in MText
+ */
+struct LC_MTextTabGroup {
+    LC_MTextTabGroup() = default;
+    LC_MTextTabGroup(QString& strTabs) { loadFrom(strTabs); }
+    ~LC_MTextTabGroup() = default;
+
+    enum LC_MTextTab {
+        Invalid,
+        LeftAlign,
+        CenterAlign,
+        RightAlign,
+        DP_Align,
+        ItemIndent,
+        LeftIndent,
+        BulletIdx
+    };
+    QPair<LC_MTextTabGroup::LC_MTextTab, double> 
+       find(LC_MTextTab kind, unsigned short startAt = 0);
+    bool listFormatter = false;
+    bool isListFormat() { return listFormatter; }
+    QList<QPair<LC_MTextTab, double>> tablist;
+    void clear() { tablist.clear(); }
+    void loadFrom(const QString& strTabs);
+};
 
 /**
  * Holds the data that defines a text entity.
  */
 struct RS_MTextData {
+	/**
+	 * Mode for line breaks
+	 */
+    enum MTextBreakMode {
+        AtNeed,
+        Never,
+        ForceNow
+    };
+    
+	/**
+	 * Text 'decorations'
+	 */
+    enum MTextDecor {
+        None,
+        Underline,
+        Overline,
+        Strikethru
+    };
 	/**
 	 * Vertical alignments.
 	 */
@@ -131,18 +215,43 @@ struct RS_MTextData {
 	double angle;
 	/** Update mode */
 	RS2::UpdateMode updateMode;
+
+    /** whether mtext has children on more than one line - used for figuring where in the
+     *  tree structure to add decorations */
+    bool       multiLine;
+	/** text width factor set by rich code*/ 
+    double     textWidthFac;
+
+    /** underline, overline, strikethrough set by rich code*/
+    MTextDecor       decoration;
+	/** line break mode set by rich code*/
+    MTextBreakMode   linebreak;
+	/** tab settings set by rich code, shared with children and subsequent
+	 * mtext siblings until reset for one of them */
+    std::shared_ptr<LC_MTextTabGroup> tabs;
+	/** whether the display text is the entry for a list item */
+    bool             listText;
+	/** the extra distance to be set between lines; produced 
+     * by extra \P codes */
+    double           vertClear;
+
+	/** convert rich codes into data settings */
+    void applyCode(LC_CodeTag& codetag);
+	/** @return whether this data has the tab settings for a text list */
+    bool hasListFormat();
+	/** @return whether this should be laid out as list item text */
+    bool isListText();
+    
+	/** reset the one-use values of forced line break and listText */
+    void resetOneUseVals();
 };
 
 std::ostream& operator << (std::ostream& os, const RS_MTextData& td);
 
-
 /**
  * Class for a text entity.
- * Please note that text strings can contain special
- * characters such as %%c for a diameter sign as well as unicode
- * characters. Line feeds are stored as real line feeds in the string.
  *
- * @author Andrew Mustun
+ * @author Andrew Mustun, David Mitchell
  */
 class RS_MText : public RS_EntityContainer {
 public:
@@ -151,6 +260,8 @@ public:
 	virtual ~RS_MText() = default;
 
     virtual RS_Entity* clone() const override;
+    
+    std::string dump(); //XXX DEBUG
 
     /**	@return RS2::EntityText */
     virtual RS2::EntityType rtti() const override{
@@ -161,11 +272,10 @@ public:
     RS_MTextData getData() const {
         return data;
     }
-
+    
+    void forcedCalculateBorders();
+    
     void update() override;
-
-    int getNumberOfLines();
-
 
     RS_Vector getInsertionPoint() {
         return data.insertionPoint;
@@ -205,6 +315,7 @@ public:
     double getLineSpacingFactor() {
         return data.lineSpacingFactor;
     }
+        
     void setText(const QString& t);
     QString getText() {
         return data.text;
@@ -228,10 +339,6 @@ public:
         return usedTextHeight;
     }
 
-//	virtual double getLength() const {
-//		return -1.0;
-//	}
-
     /**
      * @return The insertion point as endpoint.
      */
@@ -253,9 +360,6 @@ public:
 
     void draw(RS_Painter* painter, RS_GraphicView* view, double& patternOffset) override;
 
-private:
-    double updateAddLine(RS_EntityContainer* textLine, int lineCounter);
-
 protected:
     RS_MTextData data;
 
@@ -265,12 +369,71 @@ protected:
      * @see update
      */
     double usedTextWidth;
+    
     /**
      * Text height used by the current contents of this text entity.
      * This property is updated by the update method.
      * @see update
      */
     double usedTextHeight;
+    
+    /**
+     * @return whether this container holds letter/glyph inserts
+     */
+    bool hasGlyphs();
+
+    /**
+     * Apply forced line breaks, perform auto word wrap, and apply list item formatting
+     */
+    RS_Vector layout(const RS_Vector &posnV, double leftMargin, double rightMargin);
+    
+   /** Load @param vecStarts with indexes where text switches from 'code sections'
+     *  to 'display sections' and vice versa
+     */
+    void getSecnStarts(QList<unsigned int>& vecStarts);
+    
+    /** @return nsecn with the section that @param nchr falls within
+      */
+    unsigned short getSecn(unsigned int nchr, const QList<unsigned int>& vecStarts);    
+    
+	/** TODO - write this up
+	  */
+    bool stackFoundAt(unsigned short nsecn, const QList<unsigned int>& vecSecnStarts);
+
+	/** Build tree segment for 'stacked' (fraction/superscript/subscript) text
+	  * @return new assembly 
+	  */
+    RS_MText* buildStackAssy(const RS_MTextData& data, const LC_CodeTag& codeTag);
+    
+    /**
+     * If calling entity is a glyph holder, find location within text where line break should occur, if 
+     * any; if found, copy/split glyphs into two new mtext entities as appropriate, and replace the current 
+     * glyph entities with the two new mtext entities. 
+     * If calling entity is not a glyph holder, call wordwrap on its last child. On return, replace the 
+     * last child with the two children the child now has.
+     * @return true while further wordwrap is needed, then @return false.
+     */
+    bool wordwrap(double leftMarg, double rightMarg);
+    
+    /**
+     * Used during wordwrap; avoid unwanted call to setText() during initial construction.
+     */
+    void resetFrom(
+      const QList<RS_Entity *>::iterator& startEnts,
+      const QList<RS_Entity *>::iterator& endEnts,
+      const QString& _text
+    );
+      
+    /**
+     * @return whether line return is really needed.  FIXME: not certain about the logic used
+     */
+    bool wantsLineReturn(double leftMargin);
+    
+    /**
+     * Add line entities to be drawn as underlines (only decoration currently implemented).
+     */
+    void setDecorations();
+    
 };
 
 #endif

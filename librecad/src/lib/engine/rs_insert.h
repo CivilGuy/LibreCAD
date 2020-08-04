@@ -96,6 +96,8 @@ public:
 	virtual ~RS_Insert() = default;
 
 	virtual RS_Entity* clone() const;
+	
+    std::string dump(); // DEBUG ONLY
 
     /** @return RS2::EntityInsert */
     virtual RS2::EntityType rtti() const {

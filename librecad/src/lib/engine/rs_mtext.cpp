@@ -2,6 +2,7 @@
 **
 ** This file is part of the LibreCAD project, a 2D CAD program
 **
+** Copyright (C) 2020 David J. Mitchell (damitch@civilguy.com)
 ** Copyright (C) 2010 R. van Twisk (librecad@rvt.dds.nl)
 ** Copyright (C) 2001-2003 RibbonSoft. All rights reserved.
 **
@@ -24,10 +25,13 @@
 **
 **********************************************************************/
 
-#include<iostream>
-#include<cmath>
+#include <iostream>
+#include <cmath>
+#include <sstream>
+#include "rs_debug.h"
 #include "rs_font.h"
 #include "rs_mtext.h"
+#include "rs_line.h"
 
 #include "rs_fontlist.h"
 #include "rs_insert.h"
@@ -36,6 +40,170 @@
 #include "rs_graphicview.h"
 #include "rs_painter.h"
 
+LC_CodeTag::LC_CodeTag(QString& rawtxt, unsigned int* nposn) {
+    loadFrom(rawtxt, nposn);
+}
+
+LC_CodeTag::~LC_CodeTag() { }
+
+void LC_CodeTag::loadFrom(const QString& rawtxt, unsigned int* nposn) {
+    starttag = *nposn;
+    text     = rawtxt.mid(starttag);
+    endtag   = getFinalEnd();
+    isstack  = false;
+
+    text.resize(endtag);
+
+    if (text[0] == '\\') {
+        if (QString("ACHQTWX").indexOf(text[1]) != -1) {
+            /** For A and C, value is a simple USHORT;
+             *  for the others, value is a float, but for H and W could conceivable be either absolute
+             *  value, or a relative value ending with an 'x' (or 'X'?) -- not sure how or whether to 
+             *  deal with that. For now, figure that H value is absolute and W value is relative to H --
+             *  ignore any other text up to final ';'. < FIXME (when?) */
+            if ((text[1] == 'A') || (text[1] == 'C')) {
+                intVal = this->text.mid(2, (endtag - 2)).toInt(); // TODO: Test this
+            } else {
+                dblVal = this->text.mid(2, (endtag - 2)).toDouble(); // TODO: Test this
+            }
+        } else if (QString("Ffp").indexOf(text[1]) != -1) {
+            /** The value is font name, family, and opt characteristics for the font -- or it's a
+             *  set of paragraph/tab settings.  For now, leave as simple string. */
+            strVal = this->text.mid(2, (endtag - 1));
+        } else if (text[1] == 'S') {
+            isstack = true;
+        }
+    } else {
+        int nStack = text.indexOf(QString("\\S"));
+        int nSpace = text.indexOf(QString(" "));
+        isstack = (-1 < nStack) && (nStack < nSpace);
+    }
+    *nposn = endtag;
+}
+
+bool LC_CodeTag::isspantag() {
+    return isstack || (((text.length() > 1) && (QString("LOKS").indexOf(text[1], Qt::CaseSensitive) != -1))
+        || ((text.length() > 0) && (text[0] == '{')));
+}
+
+unsigned int LC_CodeTag::getMatchingEnd(const QString& delim, unsigned int start, unsigned short level) {
+    /** similar to a previous func getGroups(), but only returns the single index of the close delimiter
+     *  at the same 'level' as the first open delimiter - that is, this version is slightly simpler
+     *
+     *  As written, only works with bracket delims - other spanning codes can't self-nest, so don't
+     *  (can't) make use of this method... BUT CHECK (FIXME?) */
+
+    int n0 = this->text.indexOf(delim[0], start), n1 = 0, n2 = 0;
+    /** if a second open delimiter is found before the close delimiter (must be at least one close delim)
+     *    move one level up and try again.
+     *  At some point, getMatchingEnd() will return the position of the close delim that matches the 
+     *    open delim that started the call.  Return it to n0. */
+        
+    while ((n0 != -1) && (n0 < this->text.length())) {
+        n1 = this->text.indexOf(delim[0], n0);
+        n2 = this->text.indexOf(delim[1], n0);
+        
+        if ((n1 != -1) && (n1 < n2)) {
+            n0 = getMatchingEnd(delim, n1, level + 1) + 1;
+        } else {
+            break;
+        }
+    }
+    return n2;
+}
+
+unsigned int LC_CodeTag::getFinalEnd() {
+    /** For 'spanning' and 'stacking' tags, returns the position of the first character of the close tag.
+        For 'settings', returns the position just beyond the closing semicolon. */
+    int nEnd = 0;
+
+    if (this->isspantag()) {
+        if (this->text[0] == '{') {
+            nEnd = this->getMatchingEnd("{}"); // recursive, fwiw
+        } else if (QString("OLK").indexOf(this->text[1]) != -1) {
+            QString closetag = "\\";
+            closetag += this->text[1].toLower();
+            nEnd = this->text.indexOf(closetag);
+        } else { // must be stacking tag
+            // FIXME...  implies that there are no other settings tags before end of stacking tag;
+            // likely enough, but not dead certain
+            nEnd = this->text.indexOf(';');
+        }
+    } else if ((this->text[0] == '\\') 
+            && (QString("olkP").indexOf(this->text[1]) != -1)) {
+        // not spanning tag, so must be closing tag or forcebreak
+        nEnd += 2;
+    } else if ((this->text[0] == '^') && (this->text[1] == 'I')) { // indent tag
+        nEnd += 2;
+    } else { // regular 'settings' tag
+        nEnd = this->text.indexOf(';') + 1;
+    }
+    std::cout << "getFinalEnd(): nEnd is now " << nEnd << "\n";
+    return (nEnd == -1) ? text.length() : (nEnd + this->starttag);
+}
+
+QPair<LC_MTextTabGroup::LC_MTextTab, double> LC_MTextTabGroup::find(
+  LC_MTextTabGroup::LC_MTextTab kind, unsigned short startAt) {
+  
+    QList<QPair<LC_MTextTabGroup::LC_MTextTab, double>>::iterator
+      itrEntry = tablist.begin() + startAt;
+    while (itrEntry < tablist.end()) {
+        if ((*itrEntry).first == kind) return *itrEntry;
+        ++itrEntry;
+    }
+    return QPair<LC_MTextTabGroup::LC_MTextTab, double>(Invalid, 0.0);
+} 
+
+void LC_MTextTabGroup::loadFrom(const QString& strTabs) {
+    LC_MTextTab kind = Invalid;
+    double      value;
+    int n1 = 2, n2 = n1;
+
+    while (strTabs[n2] != ';') {
+        switch(strTabs[n1].toLatin1()) {
+        case 'i':
+            kind    = ItemIndent;
+            break;
+        case 'l':
+            kind    = LeftIndent;
+            if (tablist.back().first == ItemIndent) listFormatter = true;
+            break;
+        case 't':
+            kind    = LeftAlign;
+            break;
+        case 'x':
+            kind    = BulletIdx;
+            break;
+        default:
+            std::cout << "LC_MTextTabGroup::loadFrom() - unknown code \'" << strTabs[n2].toLatin1() << "\'\n";
+            break;
+        }
+        ++n1;
+        n2 = n1;
+        while (!((strTabs[n2] == ',') || (strTabs[n2] == ';'))) ++n2;
+        value = strTabs.midRef(n1, (n2 - n1)).toDouble();
+        n1 = n2 + 1;
+        tablist.append(QPair<LC_MTextTab, double>(kind, value));
+    }
+}
+
+std::ostream& operator << (std::ostream& out, const RS_MTextData &mtd) {
+
+    out << "  MText Data:\n      insertionPoint   ( " << mtd.insertionPoint.x << ", " 
+      << mtd.insertionPoint.y << ")\n      horz align       " << mtd.halign
+      << "\n      vert align       " << mtd.valign << "\n      height           " << mtd.height
+      << "\n      width            " << mtd.width << "\n      draw dir         " << mtd.drawingDirection
+      << "\n      line space style " << mtd.lineSpacingStyle << "\n      line space factr "
+      << mtd.lineSpacingFactor << "\n      text     \'" << mtd.text.toStdString() << "\'\n      textWidthFac     "
+      << mtd.textWidthFac << "\n      decoration       " << mtd.decoration
+      << "\n      style     \'" << mtd.style.toStdString() << "\'\n      angle            " << mtd.angle << "\n\n";
+
+    return out;
+}
+
+/**
+ * Constructor.
+ */
 RS_MTextData::RS_MTextData(const RS_Vector& _insertionPoint,
 			double _height,
 			double _width,
@@ -61,24 +229,94 @@ RS_MTextData::RS_MTextData(const RS_Vector& _insertionPoint,
 	,angle(_angle)
 	,updateMode(_updateMode)
 {
+    multiLine    = false;
+    textWidthFac = 1.0;
+    decoration   = None;
+    linebreak    = AtNeed;
+    tabs         = nullptr;
+    listText     = false;
+    vertClear    = 0.0;
 }
 
-std::ostream& operator << (std::ostream& os, const RS_MTextData& td) {
-	os << "("
-	   <<td.insertionPoint<<','
-	  <<td.height<<','
-	 <<td.width<<','
-	<<td.valign<<','
-	<<td.halign<<','
-	<<td.drawingDirection<<','
-	<<td.lineSpacingStyle<<','
-	<<td.lineSpacingFactor<<','
-	<<td.text.toLatin1().data() <<','
-	<<td.style.toLatin1().data()<<','
-	<<td.angle<<','
-	<<td.updateMode<<','
-	<<")";
-	return os;
+void RS_MTextData::applyCode(LC_CodeTag& codetag) {
+    QChar code = (codetag.text.length() > 1) ? codetag.text[1] : codetag.text[0];
+    size_t n0;
+    
+    switch(code.toLatin1()) {
+    case 'A':
+        break; // TODO - but still undecided just what to do here
+    case 'C':
+        break; // TODO - set entity's color, when accesible
+    case 'F': case 'f':
+        // Codes after a pipe may be present to flag bold, italic, and other values - skipped for now
+        n0 = codetag.text.indexOf('|');
+        if (n0 == std::string::npos) n0 = codetag.text.indexOf(';');
+        this->style = codetag.text.mid(2, n0 - 2);
+        break;
+    case 'H':
+        height = codetag.dblVal;
+        break;
+    case 'Q': // Oblique factor - skip for now
+        break;
+    case 'T': // Tracking value (?) - skip for now
+        break; // TODO
+    case 'W':
+        textWidthFac = codetag.dblVal; // but FIXME?
+        break;
+    case 'X':
+        break; // TODO - Dimensioning flag - skip for now
+    case 'p':
+        tabs.reset(new LC_MTextTabGroup(codetag.text));
+        // FIXME later - if codetag.text is __, instead delete (this use of?) tabs
+        break;
+    case 'P':
+        if (linebreak == ForceNow) {
+            vertClear += height * STDLINESPACE * lineSpacingFactor;
+        } else {
+            linebreak = ForceNow;
+            vertClear = 0.0;
+        }
+        break;
+    case 'S':
+        break; // stacking code handled elsewhere
+    case 'L':
+        decoration = Underline;
+        break;
+    case 'O':
+        decoration = Overline;
+        break;
+    case 'K':
+        decoration = Strikethru;
+        break;
+    case '{':
+        break; // Handled elsewhere
+    case 'l': case 'o': case 'k': case '}':
+        break;  // closing codes handled elswhere
+    case 'I':
+        /* TODO later:
+         * Finish review of the whole thing.  Still not fully convinced that it's a full code rather than
+         * a special character.  Still isn't figured for use as a regular tab-stop. */
+        if (hasListFormat()) listText = true;
+        break;
+    default: // FIXME
+        // RS_DEBUG->print("Warning: unrecognized rich code " << code << "\n";
+        break;
+    }
+}
+
+bool RS_MTextData::hasListFormat() {
+    return (tabs != nullptr) && (tabs->tablist.size() > 1) 
+      && (tabs->tablist[0].first == LC_MTextTabGroup::ItemIndent) 
+      && (tabs->tablist[1].first == LC_MTextTabGroup::LeftIndent);
+}
+
+bool RS_MTextData::isListText() {
+    return hasListFormat() && (listText == true);
+}
+
+void RS_MTextData::resetOneUseVals() {
+    linebreak = AtNeed;
+    listText  = false;
 }
 
 /**
@@ -88,9 +326,15 @@ RS_MText::RS_MText(RS_EntityContainer* parent,
                  const RS_MTextData& d)
         : RS_EntityContainer(parent), data(d) {
 
+    RS_DEBUG->setLevel(RS_Debug::D_INFORMATIONAL);
+    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "RS_MText constructor - parent is type %d", parent->rtti());
+
     usedTextHeight = 0.0;
     usedTextWidth = 0.0;
     setText(data.text);
+    
+    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "End mtext constructor - object is now %s", dump().c_str());
+
 }
 
 RS_Entity* RS_MText::clone() const{
@@ -101,32 +345,632 @@ RS_Entity* RS_MText::clone() const{
 	return t;
 }
 
+std::string RS_MText::dump() { // DEBUG
+    std::stringstream strOut;
+    std::string strLayer;
+    if (layer == nullptr) strLayer = "missing";
+    else {
+        std::stringstream ssLayer;
+        ssLayer << layer;
+        strLayer = ssLayer.str();
+    }
+    strOut << "id = " << this->id << ", layer is (" << strLayer << "), visible = " << this->isVisible() 
+      << ",\npen is (" << pen << "),\ninsertionPoint is " << data.insertionPoint << ", minV is " << minV 
+      << ", maxV is " << maxV << ",\nattach flags are " << data.valign << " / " << data.halign 
+      << ", box width = " << data.width << ", text height = " << data.height 
+      << ", used text height = " << usedTextHeight << ", usedTextWidth = " << usedTextWidth
+      << ", drawing dir is " << data.drawingDirection << ", linespace flag is " << data.lineSpacingStyle
+      << ", line space factor = " << data.lineSpacingFactor
+      << ",\nraw text is \033[96m\'" << data.text.toLatin1().data()
+      << "\033[0m\',\ntext style is \'" << data.style.toLatin1().data() << "\', angle = " << data.angle 
+      << ", and updateMode is " << data.updateMode << "\n";
+    strOut << "This new version of mtext also has data from 'rich codes':\n"
+      << "Text width factor " << data.textWidthFac << ", hasTabs is " << ((data.tabs == nullptr) ? "false" : "true") 
+      << "\n, isMultiLine is " << (data.multiLine ? "true" : "false") 
+      << ", isListFmt is " << (data.hasListFormat() ? "true" : "false" ) 
+      << ", lineBreak type is " << data.linebreak 
+      << ", isListText is " << (data.isListText() ? "true" : "false") 
+      << ", decoration is " << data.decoration << ", and vertClear is " << data.vertClear << "\n\n";
+      
+    strOut << "This mtext has " << entities.size() << " children.\n";
+    if (entities.size()) {
+        strOut <<  "The first one is ";
+        if (entities.front()->rtti() == RS2::EntityLine) {
+            strOut << "a line: \n" << ((RS_Line *)entities.front())->dump();
+        } else if (entities.front()->rtti() == RS2::EntityInsert) {
+            strOut << "an insert: \n" << ((RS_Insert *)entities.front())->dump();
+        } else if (entities.front()->rtti() == RS2::EntityMText) {
+            strOut << "another mtext: \n" << ((RS_MText *)entities.front())->dump();
+        } else strOut << "unknown.\n";
+        
+        strOut <<  "The last one is ";
+        if (entities.back()->rtti() == RS2::EntityLine) {
+            strOut << "a line: \n" << ((RS_Line *)entities.back())->dump();
+        } else if (entities.back()->rtti() == RS2::EntityInsert) {
+            strOut << "an insert: \n" << ((RS_Insert *)entities.back())->dump();
+        } else if (entities.back()->rtti() == RS2::EntityMText) {
+            strOut << "another mtext: \n" << ((RS_MText *)entities.back())->dump();
+        } else strOut << "unknown.\n\n";
+    }
+    
+    return strOut.str();
+}
+
 /**
- * Sets a new text. The entities representing the
- * text are updated.
+ * Gets list of indexes where data.text switches from rich code text to display text
+ * and vice versa. A code section may be empty, shown by duplicate index values.
+ */
+void RS_MText::getSecnStarts(QList<unsigned int>& vecStarts) {
+
+    int n = 0; 
+    bool isCodeSecn = true;
+    
+    vecStarts.clear(); 
+    vecStarts.push_back(n); // add another n value when section type shifts
+
+    while (n < data.text.length()) {
+        switch(data.text[n].toLatin1()) {
+        case '\\':
+            if (QString("\\{}~").indexOf(data.text[n + 1]) != -1) {
+                // escaped backslash or bracket, or nbsp - treat as text characters
+                if (isCodeSecn) { vecStarts.push_back(n); isCodeSecn = false; }
+                n++;
+            } else {
+                if (!isCodeSecn) { // end text Secn, then switch to code section
+                    vecStarts.push_back(n); isCodeSecn = true;
+                }
+                n++;
+                if (QString("OLKolk").indexOf(data.text[n]) != -1) {
+                    // here, do nothing
+                } else if (QString("ACFfHpQTWX").indexOf(data.text[n]) != -1) { 
+                    // value is only up to next semicolon
+                    n = data.text.indexOf(';', n);
+                    // TODO vv - probably want formal exception or assertion here
+                    if (n == -1) { // vvv TODO - replace with RS_DEBUG->print calls
+                        std::cout << "Bad text: code not ended properly.\n"; return;
+                    };
+                } else if (data.text[n] == 'P') { // 'hard' paragraph break
+                    // single character, but needs to be treated as full rich code
+                    // here, do nothing // TODO ^^ Last chance to reconsider (until next chance)
+                } else if (data.text[n] == 'S') { // stacking code
+                    unsigned int n2 = vecStarts.back();
+                    if (vecStarts.size() > 2) {
+                        while (!data.text[n2].isSpace() && (n2 > 0)) --n2;
+                        // the one before vecStarts.back() is the beginning of the display text before the current code secn
+                        // if n2 < vecStarts[vecStarts.size() - 2] that entire display text is 'prefix' 
+                        // else a code section (empty) is needed before the prefix (unless a space just precedes vecStarts.back())
+                        if (n2 >= vecStarts[vecStarts.size() - 2]) {
+                            ++n2; // move off the space
+                            if (n2 < vecStarts.back()) {
+                                vecStarts.insert((vecStarts.end() - 1), n2);
+                                vecStarts.insert((vecStarts.end() - 1), n2);
+                            }
+                        }
+                    }
+                    n = data.text.indexOf(';', n); // but could \S have spans within itself? FIXME later.
+                    if (n == -1) {
+                        std::cout << "Bad text: stack code not ended properly.\n"; return;
+                    } else vecStarts.push_back(n);
+                } else {
+                    std::cout << "Bad text: Unrecognized escape code.\n";
+                }
+            }
+            break;
+        case '^':
+            if (data.text[n + 1] == 'I') {
+                if (!isCodeSecn) { vecStarts.push_back(n); isCodeSecn = true; }
+                ++n;
+            }
+            break;
+        case '{': case '}':
+            // end text section, then switch to code section
+            if (!isCodeSecn) { vecStarts.push_back(n); isCodeSecn = true; } 
+            break;
+        default:  // it's display text
+            if (isCodeSecn) { vecStarts.push_back(n); isCodeSecn = false; } // end it, then switch to text section
+            break;
+        }   
+        n++;
+    }
+    vecStarts.push_back(n);
+}
+
+// TWEAKED signature
+unsigned short RS_MText::getSecn(unsigned int nchr, const QList<unsigned int>& vecStarts) {
+    unsigned short nsecn = vecStarts.size() - 1;
+
+    while ((nsecn > 0) && (vecStarts[nsecn] > nchr)) --nsecn;
+    if ((nsecn > 0) && (vecStarts[nsecn - 1] == vecStarts[nsecn])) --nsecn;
+
+    return nsecn;
+}
+
+std::string dumpQList(const QList<unsigned int> &list) {
+    std::stringstream ssOut;
+    ssOut << "QList {";
+    for (int n = 0; n < list.size(); ++n) {
+        ssOut << list.at(n);
+        if (n < (list.size() - 1)) ssOut << ", ";
+    }
+    ssOut << "}";
+    return ssOut.str();
+}
+
+// NEW
+bool RS_MText::stackFoundAt(unsigned short nsecn, const QList<unsigned int>& vecSecnStarts) {
+    // return true if there's a stack command in this code section, or if there's one in the
+    // next code section and there's no space character intervening
+
+    int nStack = data.text.indexOf(QString("\\S"), vecSecnStarts[nsecn]);
+    bool isStackFound = false;
+
+    if ((-1 < nStack) && (nsecn < vecSecnStarts.size() - 3)) {
+        // else no legit stack is possible 
+        if ((unsigned int)nStack < vecSecnStarts[nsecn + 1]) isStackFound = true;
+        else if ((vecSecnStarts[nsecn + 2] <= (unsigned int)nStack) 
+          && ((unsigned int)nStack < vecSecnStarts[nsecn + 3])) {
+            // the stack may have a prefix, but only if there's no space
+            // between the prefix and the stack code
+            int nSpace = data.text.indexOf(QString(" "), 
+                                        vecSecnStarts[nsecn]);
+            isStackFound = nSpace > nStack;
+        }
+    }
+    return isStackFound;
+}
+
+/**
+ * Creates tree structure for top-level MText depending on 'rich codes' encountered in t.
+ * Also performs layout() of text, calls setDecorations(), and update()
  */
 void RS_MText::setText(const QString& t) {
+    if (t.isEmpty()) return;
+    
+    RS_DEBUG->setLevel(RS_Debug::D_DEBUGGING); // show all debug messages
+    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "  Begin setText()\n");
+    
     data.text = t;
+    
+    QList<unsigned int> vecSecnStarts;
+    getSecnStarts(vecSecnStarts);
+    
+    RS_DEBUG->print("vecSecnStarts is %s", dumpQList(vecSecnStarts).c_str());
 
-    // handle some special flags embedded in the text:
-    if (data.text.left(4)=="\\A0;") {
-        data.text = data.text.mid(4);
-        data.valign = RS_MTextData::VABottom;
-    } else if (data.text.left(4)=="\\A1;") {
-        data.text = data.text.mid(4);
-        data.valign = RS_MTextData::VAMiddle;
-    } else if (data.text.left(4)=="\\A2;") {
-        data.text = data.text.mid(4);
-        data.valign = RS_MTextData::VATop;
+    minV.set(data.insertionPoint.x, data.insertionPoint.y - data.height); 
+    maxV.set(data.insertionPoint.x, data.insertionPoint.y);
+
+    unsigned int nchr = 0;
+    
+    if ((2 < vecSecnStarts.size()) && (vecSecnStarts.size() < 5)) { 
+        // no more than one display section
+        
+        // replace any '\~' with nbsp - simplest that way
+        int idxnbsp = 0;
+        idxnbsp = data.text.indexOf("\\~", idxnbsp);
+        while (idxnbsp != -1) {
+            data.text.replace(idxnbsp, 2, "\xA0");
+            idxnbsp = data.text.indexOf("\\~", idxnbsp);
+        }
+
+        while (nchr < vecSecnStarts.at(1)) {
+            LC_CodeTag ct(data.text, &nchr);
+            std::cout << "*A* - code tag text is \'" << ct.text.toStdString().c_str() << "\" and nchr is " << nchr << "\n";
+            data.applyCode(ct);
+        }
+
+        std::cout << "MText data is now:\n" << data;
+
+        /* Now add insert for each char */
+
+        RS_Font* font {RS_FONTLIST->requestFont(data.style)};
+        if (font == nullptr) {
+            return;
+        }
+        
+        double netHeightFac = data.height/9.0, netWidthFac = netHeightFac * data.textWidthFac,
+          // note that the font file data is scaled up by 9, per tradition (?)
+          netSpaceWidth     = netWidthFac * font->getWordSpacing(),
+          netLetterSpace    = netWidthFac * font->getLetterSpacing();
+
+        RS_InsertData insDataTemp(
+            QString(""), // name
+            RS_Vector(minV),                      // insertionPoint
+            RS_Vector(netWidthFac, netHeightFac), // scale factors
+            0.0,                                  // angle
+            1, 1,                                 // cols, rows
+            RS_Vector( 0.0, 0.0),                 // spacing
+            font->getLetterList(),                // block source
+            RS2::NoUpdate                         // update mode
+        ); // only a couple of these properties need to be changed for each char
+        
+        for (nchr = vecSecnStarts[1]; nchr < vecSecnStarts[2]; ++nchr) {  // See Outline A in djmNotesX1.txt
+            const QChar c = data.text[nchr];
+            if (c.isSpace()) {
+                if ((nchr > vecSecnStarts[1]) && !data.text[nchr - 1].isSpace()) {
+                    insDataTemp.insertionPoint.x -= netLetterSpace;
+                }
+                if ((c == '\x20') || (c == '\xA0')) {
+                    insDataTemp.insertionPoint.x += netSpaceWidth;
+                }
+            } else { // a regular glyph/character
+                insDataTemp.name = QString{data.text[nchr]};
+                RS_Insert *glyph = new RS_Insert(this, insDataTemp);
+                std::stringstream ss;
+
+                this->entities.push_back(glyph);
+                glyph->setPen(RS_Pen(RS2::FlagInvalid));
+                glyph->setLayer(nullptr);
+
+                if (!font->findLetter(glyph->getName())) {
+                    RS_DEBUG->print("  Unrecognized character\n");
+                    glyph->setName(QChar(0xfffd)); /* calls update() itself */
+                } else glyph->update();
+
+                insDataTemp.insertionPoint.x += 
+                  glyph->getSize().x + netLetterSpace;
+            }
+        }
+
+        if (data.text.at(data.text.size() - 1).isSpace()) 
+          insDataTemp.insertionPoint.x -= netLetterSpace;
+        
+        this->maxV.x = insDataTemp.insertionPoint.x;
+        std::cout << "End of setText(), single display section\n"; // << *this;
+
+    } else { // more than one display section
+
+        RS_MTextData datanow(this->data);
+        RS_MText     *child = nullptr; 
+        unsigned short nsecn = 0;
+        nchr = 0;
+        LC_CodeTag ct;
+
+        while (nsecn < (vecSecnStarts.size() - 2)) {
+            nchr = vecSecnStarts[nsecn];
+            if (stackFoundAt(nsecn, vecSecnStarts)) {
+                ct.loadFrom(data.text, &nchr);
+                child = buildStackAssy(datanow, ct);
+                nsecn = getSecn(nchr, vecSecnStarts);
+            } else {
+                while (nchr < vecSecnStarts[nsecn + 1]) {
+                    ct.loadFrom(data.text, &nchr); // nchr is updated here
+                    if (!ct.isspantag()) {
+                        datanow.applyCode(ct);
+                    }
+                    // else datanow.applyCode(ct);
+                }
+                if (ct.isspantag()) {
+                    datanow.text = data.text.mid(vecSecnStarts[nsecn], 
+                      (ct.endtag - vecSecnStarts[nsecn]));
+                    nsecn = getSecn(nchr, vecSecnStarts);
+                } else {
+                    datanow.text = data.text.mid(vecSecnStarts[nsecn], 
+                      (vecSecnStarts[nsecn + 2] - vecSecnStarts[nsecn]));
+                    nsecn += 2;
+                }
+                child = new RS_MText(this, datanow);
+            }
+            entities.push_back(child);
+            maxV.x = entities.back()->getMax().x; // um, if glyph holder, might have final space to figure -?
+            datanow.insertionPoint.x = maxV.x;    // ^^
+        }
+        std::cout << "End of setText(), multiple display section\n";
     }
 
-    if (data.updateMode==RS2::Update) {
+    if ((parent == nullptr) || (parent->rtti() != RS2::EntityMText)) {
+        calculateBorders();
+        layout(data.insertionPoint, data.insertionPoint.x, data.insertionPoint.x + data.width);
+        calculateBorders(); // don't want to do this in layout() since that's recursive
+
+        usedTextHeight = maxV.y - minV.y;
+        usedTextWidth  = maxV.x - minV.x;
+        setDecorations();
+    }
+
+    if (data.updateMode == RS2::Update) {
         update();
-        //calculateBorders();
+        RS_DEBUG->print(" Finished mtext update: object is now %s\n\n", dump().c_str());
     }
 }
 
+RS_MText* RS_MText::buildStackAssy(const RS_MTextData& data, const LC_CodeTag& codeTag) {
+    RS_MTextData datanow(data);
+    RS_Vector posnnow(datanow.insertionPoint);
+    
+    datanow.linebreak = RS_MTextData::Never;
+    datanow.text.clear();
+    
+    RS_MText *pStack(new RS_MText(this, datanow)), *pChild;
+    int n = codeTag.text.indexOf("\\S"), n1;
+    double baseHeight     = datanow.height;
+    unsigned short pieces = 0;  // 1 for prefix, 2 for superscript, 4 for subscript
+    QChar   stackstyle    = 0; // '^' for super/sub, '/' for horz divisor, '#' for slanted divisor
+    
+//? assert(n != -1)
+    if (n != 0) { // @A
+        pieces += 1;
+        datanow.text = codeTag.text.mid(0, n);
+        pChild = new RS_MText(this, datanow);
+        pStack->appendEntity(pChild);
+        datanow.insertionPoint.x = pChild->getMax().x;
+        n += 2;
+    }
+    
+    n1 = codeTag.text.indexOf(QRegExp("[^/#]"), n);
+    stackstyle = codeTag.text[n1];
 
+//? assert(n1 != std::string::npos)
+    if (n1 > n) { // @B
+        pieces += 2;
+
+        datanow.text = codeTag.text.mid(n, (n1 - n));
+        datanow.insertionPoint.y = posnnow.y + (baseHeight * RAISESUPERSCR);
+        // see below - can't hope to properly center this for codeTag.text[n1] == '/'
+        // until width of last child is known         
+
+        datanow.height = baseHeight * SUPERSUBFAC;
+        pChild = new RS_MText(this, datanow);
+        pStack->appendEntity(pChild);
+        n = n1 + 1;
+    }
+
+    n1 = codeTag.text.indexOf(";", n);
+//? assert(n1 != std::string::npos)
+    if (n1 > n) { // @C
+        pieces += 4;
+
+        datanow.height = baseHeight * SUPERSUBFAC;
+        datanow.insertionPoint.y = posnnow.y - (baseHeight * DROPSUBSCRIPT);
+        if (stackstyle == '#') {
+            datanow.insertionPoint.x = lastEntity()->getMax().x;
+        }
+        
+        datanow.text = codeTag.text.mid(n, (n1 - n));
+        pChild = new RS_MText(this, datanow);
+        pStack->appendEntity(pChild);
+        n = n1 + 1;
+    }
+
+    if (pieces > 5) {
+        // TODO later - add divider line
+    }
+    /* FIXME later - if (datanow.text[n1] == '#')
+    will want to center the last two childs */
+    
+    // possible that appendEntity(pChild) above automatically 
+    // adjusts borders of pStack - no foolin'? FIXME: TEST -?
+        
+    return (pStack->count() > 1) ? pStack : nullptr;
+}
+
+bool RS_MText::hasGlyphs() {
+    return (!entities.empty() && (((RS_Insert *)entities[0])->rtti() == RS2::EntityInsert));
+}
+
+RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rightMargin) { 
+    std::cout << "  Begin layout() - data.text is \'" << data.text.toStdString() 
+      << "\', posnV is " << posnV << ", leftMargin is " << leftMargin 
+      << " and rightMargin is " << rightMargin << "\n";
+
+    RS_Vector delta(posnV - data.insertionPoint);    
+    this->move(delta);
+    
+    RS_Vector rtrnV(data.insertionPoint);
+
+    std::cout << "This insertionPoint is " << data.insertionPoint 
+      << ", this maxV is " << maxV << ", and this minV is " << minV << "\n";
+    
+    if (this->wantsLineReturn(leftMargin)) {
+        delta.set((leftMargin - data.insertionPoint.x), 
+          (-(data.height * STDLINESPACE * data.lineSpacingFactor + data.vertClear)));
+        this->move(delta);
+        rtrnV = maxV;
+
+        std::cout << "  Made forced break. This insertionPoint is " << data.insertionPoint
+          << ", this maxV is " << maxV << ", and this minV is " << minV << "\n";
+    }
+    
+    // otherwise:
+    if (this->hasGlyphs()) {
+        if (this->data.isListText()) {
+            double localLeftMarg = leftMargin + data.tabs->find(LC_MTextTabGroup::LeftIndent).second;
+            delta.set((localLeftMarg - data.insertionPoint.x), 0.0);
+            this->move(delta);
+            if (maxV.x <= rightMargin) {
+                rtrnV.x = maxV.x;
+            } else {
+                while (this->wordwrap(localLeftMarg, rightMargin)) {/* continue */};
+                rtrnV = ((RS_MText *)entities.back())->getMax();
+            }
+        } else if (maxV.x <= rightMargin) {
+            rtrnV.x = maxV.x;
+        } else if (this->data.linebreak == data.Never) {
+            // move to next line if not already at left margin;
+            // won't have been done yet and no other help for it
+            if (data.insertionPoint.x > leftMargin) {
+                RS_Vector delta((leftMargin - data.insertionPoint.x), 
+                  (-data.height * STDLINESPACE * data.lineSpacingFactor));
+                this->move(delta);
+                rtrnV = maxV;
+            }
+        } else {
+            while (wordwrap(leftMargin, rightMargin)) {/* continue */}
+            rtrnV = ((RS_MText *)entities.back())->getMax();
+        }
+    } else {
+        for (auto child : entities) {
+            rtrnV = ((RS_MText *)child)->layout(rtrnV, leftMargin, rightMargin);
+        }
+    }
+
+    usedTextWidth  = getSize().x;
+    usedTextHeight = getSize().y;
+    
+    std::cout << "  Finished layout.  rtrnV is " << rtrnV << "\n"
+      << "this minV is " << minV << " and maxV is " << maxV << "\n\n";
+    return rtrnV;
+}
+
+bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
+    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "\nBegin wordwrap. MText is %s", this->dump().c_str());
+    bool iswrap = false;
+
+    if (this->hasGlyphs()) {
+        QList<RS_Entity *>::iterator itrGlyph = entities.end() - 1;
+        QString::iterator itrTxt = data.text.end() - 1;
+        
+        /* if method here is to start at the right and work 'backwards', *A*,
+         * can only test for condition where last char of a word *just* fits by 
+         * looking at the text just following it to see if it's a space */
+        
+        /* if, instead, method is to start at the left and work forwards, *B*,
+         * first need to sync itrTxt and itrGlyph to first char, then stop
+         * when some char does not fit, then work backwards to space.  Still, if no
+         * space found, could still be the case that a single char of chunk
+         * would fit; still need to see if text following it is a space */
+         
+        /* Try *A* (again?!?) */
+        while ((itrGlyph > entities.begin()) && 
+          ((((RS_Insert *)(*itrGlyph))->getMax().x > rightMarg))) {
+            --itrTxt; while((*itrTxt).isSpace()) --itrTxt;
+            --itrGlyph;
+        }
+        //? assert (*itrTxt == ((RS_Insert *)(*itrGlyph))->getName()[0]);
+        // (should be able to run these as a test)
+        std::cout << "*A1* itrTxt is on \'" << (*itrTxt).toLatin1() << "\' and itrGlyph is on \'" 
+          << ((RS_Insert *)(*itrGlyph))->getName().toStdString() << "\'\n";
+        
+        if (itrGlyph == (entities.end() - 1)) { // entire line fits without wordwrap
+            return false;
+        } else if ((*(itrTxt + 1)).isSpace()) {
+            ++itrGlyph; itrTxt += 2;  // sync up to char following space
+        } else {
+            while ((itrGlyph > entities.begin()) && !(*itrTxt).isSpace()) {
+                --itrTxt; --itrGlyph;
+            }
+            std::cout << "*A2* itrTxt is on \'" << (*itrTxt).toLatin1() << "\' and itrGlyph is on \'" 
+              << ((RS_Insert *)(*itrGlyph))->getName().toStdString()<< "\'\n";
+            if ((*itrTxt).isSpace()) {
+                // itrGlyph has overshot it, maybe to begin() entity even
+                ++itrGlyph; ++itrTxt; // place where break needs to take place
+            } else {
+                // itrGlyph has moved to begin() without finding any space
+                RS_Vector delta(leftMarg - data.insertionPoint.x,
+                  (-data.height * STDLINESPACE * data.lineSpacingFactor));
+                this->move(delta);
+                return true;
+            }
+        }
+        // wordbreak is needed; itrGlyph and itrTxt should now be in proper place
+        data.multiLine = false;
+        QList<RS_Entity *> tempents;
+        RS_MTextData datanow(this->data);
+        datanow.text.clear();
+        datanow.multiLine = true;
+        
+        tempents.push_back(new RS_MText(this, datanow));
+        tempents.push_back(new RS_MText(this, datanow));
+        
+        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, 
+          "Before split, itrGlyph is at \'%s\' and itrTxt is at \'%c\'\n", 
+          ((RS_Insert *)*itrGlyph)->getName().toStdString().c_str(), (*itrTxt).toLatin1());
+        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, 
+          "Left text will be \"%s\" and right text will be \"%s\"\n",
+          data.text.left(itrTxt - data.text.begin()).toStdString().c_str(),
+          data.text.right(data.text.end() - itrTxt).toStdString().c_str());
+        
+        ((RS_MText *)(tempents.front()))->resetFrom(entities.begin(), itrGlyph, 
+          data.text.left(itrTxt - data.text.begin()));
+        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "After split, tempents.front() is %s",
+           ((RS_MText *)tempents.front())->dump().c_str());  
+          
+        ((RS_MText *)(tempents.last()))->resetFrom(itrGlyph, entities.end(), 
+          data.text.right(data.text.end() - itrTxt));
+        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "tempents.back() is %s", 
+          ((RS_MText *)tempents.last())->dump().c_str());
+
+        RS_Vector delta(leftMarg - ((RS_MText *)tempents.last())->getInsertionPoint().x,
+          (-data.height * STDLINESPACE * data.lineSpacingFactor));
+          
+        ((RS_MText *)tempents.last())->move(delta);
+        
+        this->entities.clear();
+        
+        //XXX this->clear(); // this removes all the glyph insert pointers *and deletes them*
+        // (including the ones just copied to tempents)
+        
+        this->entities.swap(tempents);
+        iswrap = true;
+        
+        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "\n\nFinished line break - this is now %s", this->dump().c_str()); 
+    } else {
+        RS_MText *pLastChild = (RS_MText *)entities.takeLast();
+        while (pLastChild->wordwrap(leftMarg, rightMarg)) {
+            entities.append(pLastChild->entities);
+            pLastChild->entities.clear();
+            delete pLastChild;
+
+            pLastChild = (RS_MText *)entities.takeLast();
+        }
+        iswrap = false; // since childs are done with it
+    }
+    return iswrap;
+}
+
+void RS_MText::resetFrom(
+      const QList<RS_Entity *>::iterator& startEnts,
+      const QList<RS_Entity *>::iterator& endEnts,
+      const QString& _text) {
+    QList<RS_Entity *>::iterator itrEnt = startEnts;
+
+    data.text = _text;
+    while (itrEnt < endEnts) {
+        entities.append(*itrEnt);
+        ++itrEnt;
+    }
+    data.insertionPoint.x = ((RS_Insert *)(*startEnts))->getInsertionPoint().x; // .y is unchanged 
+    // well enough, since data is otherwise copied faithfully
+    
+    maxV.set(((RS_Insert *)entities.back())->getInsertionPoint().x, data.insertionPoint.y);
+    minV.set(data.insertionPoint.x, ((RS_Insert *)entities.front())->getInsertionPoint().y);
+    // not strictly accurate because of glyph descenders, but good enough
+}
+
+bool RS_MText::wantsLineReturn(double leftMargin) {
+    // only returns true if text is right of leftMargin
+    return (data.insertionPoint.x > leftMargin)
+      && ((data.linebreak == data.ForceNow) 
+        || (data.hasListFormat() && !data.isListText()));
+}
+
+void RS_MText::setDecorations() { // called initially by top MText, then recursive
+    std::cout << "  Begin setDecorations()\n";
+    if ((data.decoration != RS_MTextData::MTextDecor::None) && !data.multiLine) { // for now, only supports underline
+        double y_ul = minV.y - data.height * DROPUNDERLINE;
+        RS_LineData lineData(RS_Vector(minV.x, y_ul), RS_Vector(maxV.x, y_ul));
+
+        entities.push_back(new RS_Line(this, lineData));
+        std::cout << "  Added underline " << *((RS_Line *)entities.back()) << "\n";
+    } else if (!this->hasGlyphs()) {
+        for (RS_Entity* child: entities) {
+            ((RS_MText *)child)->setDecorations();
+        }
+    }
+}
+
+void RS_MText::forcedCalculateBorders() {
+    RS_EntityContainer::forcedCalculateBorders();
+
+    if (this->hasGlyphs() && data.text.at(data.text.size() - 1).isSpace()) {
+        RS_Font* font {RS_FONTLIST->requestFont(data.style)};
+    
+        if (font == nullptr) {
+            RS_DEBUG->print("font not found. Arrgh!\n");
+            return;
+        }
+        maxV.x += (data.height/9.0) * data.textWidthFac * font->getWordSpacing();
+    }
+}
 
 /**
  * Gets the alignment as an int.
@@ -163,8 +1007,6 @@ int RS_MText::getAlignment() {
     return 1;
 }
 
-
-
 /**
  * Sets the alignment from an int.
  *
@@ -199,11 +1041,10 @@ void RS_MText::setAlignment(int a) {
 
 }
 
-
-
 /**
  * @return Number of lines in this text entity.
  */
+/*XXX
 int RS_MText::getNumberOfLines() {
     int c=1;
 
@@ -212,356 +1053,30 @@ int RS_MText::getNumberOfLines() {
             c++;
         }
     }
-
     return c;
-}
+} */
 
-
-
-
-/**
+/** FIXME - rewrite
  * Updates the Inserts (letters) of this text. Called when the
- * text or it's data, position, alignment, .. changes.
- * This method also updates the usedTextWidth / usedTextHeight property.
+ * text or its data, position, alignment, .. changes.
  */
-void RS_MText::update()
+void RS_MText::update() // FIXME
 {
     RS_DEBUG->print("RS_MText::update");
 
-    clear();
     if (isUndone()) {
         return;
     }
-
-    usedTextWidth = 0.0;
-    usedTextHeight = 0.0;
-
-    RS_Font* font {RS_FONTLIST->requestFont( data.style)};
-    if (nullptr == font) {
-        return;
+    for (auto e: entities) {
+        e->update();
     }
 
-    RS_Vector letterPos {RS_Vector( 0.0, -9.0)};
-    RS_Vector letterSpace {RS_Vector( font->getLetterSpacing(), 0.0)};
-    RS_Vector space {RS_Vector( font->getWordSpacing(), 0.0)};
-    int lineCounter {0};
-
-    // Every single text line gets stored in this entity container
-    // so we can move the whole line around easely:
-    RS_EntityContainer* oneLine {new RS_EntityContainer(this)};
-
-    // First every text line is created with
-    //   alignment: top left
-    //   angle: 0
-    //   height: 9.0
-    // Rotation, scaling and centering is done later
-
-    // For every letter:
-    for (int i = 0; i < static_cast<int>(data.text.length()); ++i) {
-        bool handled {false};
-
-        switch (data.text.at(i).unicode()) {
-        case 0x0A:
-            // line feed:
-            updateAddLine( oneLine, lineCounter++);
-            oneLine = new RS_EntityContainer(this);
-            letterPos = RS_Vector( 0.0, -9.0);
-            break;
-
-        case 0x20:
-            // Space:
-            letterPos += space;
-            break;
-
-        case 0x5C: {
-            // code (e.g. \S, \P, ..)
-            ++i;
-            int ch {data.text.at(i).unicode()};
-            switch (ch) {
-            case 'P':
-                updateAddLine( oneLine, lineCounter++);
-                oneLine = new RS_EntityContainer(this);
-                letterPos = RS_Vector( 0.0, -9.0);
-                handled = true;
-                break;
-
-            case 'f':
-            case 'F': {
-                //font change
-                // \f{symbol} changes font to symbol
-                // \f{} sets font to standard
-                ++i;
-                if ('{' != data.text.at(i).unicode()) {
-                    --i;
-                    continue;
-                }
-
-                int j {data.text.indexOf( '}', i)};
-                if (j > i) {
-                    QString fontName;
-                    if (i + 1 == j) {
-                        fontName = "standard";
-                    }
-                    else {
-                        fontName = data.text.mid( i + 1, j - i - 1);
-                    }
-
-                    RS_Font* fontNew {RS_FONTLIST->requestFont( fontName)};
-                    if (nullptr != fontNew) {
-                        font = fontNew;
-                    }
-                    if (nullptr == font) {
-                        font = RS_FONTLIST->requestFont( "standard");
-                    }
-                    i = j;
-                }
-                continue;
-            } // inner case 'f','F'
-
-            case 'S': {
-                QString upperText;
-                QString lowerText;
-
-                // get upper string:
-                ++i;
-                while (data.text.at(i).unicode()!='^'
-                       && data.text.at(i).unicode()!='\\'
-                       && i < static_cast<int>(data.text.length()) ) {
-                    upperText += data.text.at(i);
-                    ++i;
-                }
-
-                ++i;
-
-                if ('^' == data.text.at(i - 1).unicode()
-                    && ' ' == data.text.at(i).unicode() ) {
-                    ++i;
-                }
-
-                // get lower string:
-                while (';' != data.text.at(i).unicode()
-                       && static_cast<int>(data.text.length()) > i) {
-                    lowerText += data.text.at(i);
-                    ++i;
-                }
-
-                // add texts:
-                double upperWidth {0.0};
-                if (! upperText.isEmpty()) {
-                    RS_MText* upper { new RS_MText( oneLine,
-                                                    RS_MTextData( letterPos + RS_Vector( 0.0, 9.0),
-                                                                  4.0,
-                                                                  100.0,
-                                                                  RS_MTextData::VATop,
-                                                                  RS_MTextData::HALeft,
-                                                                  RS_MTextData::LeftToRight,
-                                                                  RS_MTextData::Exact,
-                                                                  1.0,
-                                                                  upperText,
-                                                                  data.style,
-                                                                  0.0,
-                                                                  RS2::Update)) };
-                    upper->setLayer( nullptr);
-                    upper->setPen( RS_Pen( RS2::FlagInvalid));
-                    upper->calculateBorders();
-                    oneLine->addEntity(upper);
-                    upperWidth = upper->getSize().x;
-                }
-
-                double lowerWidth {0.0};
-                if (! lowerText.isEmpty()) {
-                    RS_MText* lower { new RS_MText( oneLine,
-                                                    RS_MTextData( letterPos + RS_Vector( 0.0, 4.0),
-                                                                  4.0,
-                                                                  100.0,
-                                                                  RS_MTextData::VATop,
-                                                                  RS_MTextData::HALeft,
-                                                                  RS_MTextData::LeftToRight,
-                                                                  RS_MTextData::Exact,
-                                                                  1.0,
-                                                                  lowerText,
-                                                                  data.style,
-                                                                  0.0,
-                                                                  RS2::Update)) };
-                    lower->setLayer( nullptr);
-                    lower->setPen( RS_Pen( RS2::FlagInvalid));
-                    lower->calculateBorders();
-                    oneLine->addEntity(lower);
-                    lowerWidth = lower->getSize().x;
-                }
-
-                if (upperWidth > lowerWidth) {
-                    letterPos += RS_Vector( upperWidth, 0.0);
-                }
-                else {
-                    letterPos += RS_Vector( lowerWidth, 0.0);
-                }
-                letterPos += letterSpace;
-                handled = true;
-
-                break;
-            } // inner case 'S'
-
-            default:
-                --i;
-                break;
-            } // inner switch (ch)
-
-            if (handled) {
-                break;
-            }
-        } // outer case 0x5C
-
-            // if char is not handled
-            // fall-through
-        default: {
-            // One Letter:
-            QString letterText {QString(data.text.at(i))};
-            if (nullptr == font->findLetter( letterText)) {
-                RS_DEBUG->print("RS_MText::update: missing font for letter( %s ), replaced it with QChar(0xfffd)",
-                                qPrintable( letterText));
-                letterText = QChar( 0xfffd);
-            }
-
-            RS_DEBUG->print("RS_MText::update: insert a letter at pos: %f/%f", letterPos.x, letterPos.y);
-
-            RS_InsertData d( letterText,
-                             letterPos,
-                             RS_Vector( 1.0, 1.0),
-                             0.0,
-                             1,
-                             1,
-                             RS_Vector( 0.0, 0.0),
-                             font->getLetterList(),
-                             RS2::NoUpdate);
-
-            RS_Insert* letter {new RS_Insert(this, d)};
-            RS_Vector letterWidth;
-            letter->setPen( RS_Pen( RS2::FlagInvalid));
-            letter->setLayer( nullptr);
-            letter->update();
-            letter->forcedCalculateBorders();
-
-            letterWidth = RS_Vector( letter->getMax().x - letterPos.x, 0.0);
-            if (0 > letterWidth.x) {
-                letterWidth.x = -letterSpace.x;
-            }
-
-            oneLine->addEntity( letter);
-
-            // next letter position:
-            letterPos += letterWidth;
-            letterPos += letterSpace;
-
-            break;
-        } // outer default
-        } // outer switch (data.text.at(i).unicode())
-    } // for (i) loop
-
-    double tt {updateAddLine( oneLine, lineCounter)};
-    if (RS_MTextData::VABottom == data.valign) {
-        RS_Vector ot {RS_Vector( 0.0, -tt).rotate( data.angle)};
-        RS_EntityContainer::move( ot);
-    }
-
-    usedTextHeight -= data.height * data.lineSpacingFactor * 5.0 / 3.0 - data.height;
     forcedCalculateBorders();
+
+    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "  Finished RS_MText::update() - this is now %s", dump().c_str());
 
     RS_DEBUG->print("RS_MText::update: OK");
 }
-
-
-
-/**
- * Used internally by update() to add a text line created with
- * default values and alignment to this text container.
- *
- * @param textLine The text line.
- * @param lineCounter Line number.
- *
- * @return  distance over the text base-line
- */
-double RS_MText::updateAddLine(RS_EntityContainer* textLine, int lineCounter) {
-    double ls =5.0/3.0;
-
-    RS_DEBUG->print("RS_MText::updateAddLine: width: %f", textLine->getSize().x);
-
-        //textLine->forcedCalculateBorders();
-    //RS_DEBUG->print("RS_MText::updateAddLine: width 2: %f", textLine->getSize().x);
-
-    // Move to correct line position:
-    textLine->move(RS_Vector(0.0, -9.0 * lineCounter
-                             * data.lineSpacingFactor * ls));
-
-    if( ! RS_EntityContainer::autoUpdateBorders) {
-        //only update borders when needed
-        textLine->forcedCalculateBorders();
-    }
-    RS_Vector textSize = textLine->getSize();
-
-        RS_DEBUG->print("RS_MText::updateAddLine: width 2: %f", textSize.x);
-
-    // Horizontal Align:
-    switch (data.halign) {
-    case RS_MTextData::HACenter:
-                RS_DEBUG->print("RS_MText::updateAddLine: move by: %f", -textSize.x/2.0);
-        textLine->move(RS_Vector(-textSize.x/2.0, 0.0));
-        break;
-
-    case RS_MTextData::HARight:
-        textLine->move(RS_Vector(-textSize.x, 0.0));
-        break;
-
-    default:
-        break;
-    }
-
-    // Vertical Align:
-    double vSize = getNumberOfLines()*9.0*data.lineSpacingFactor*ls
-                   - (9.0*data.lineSpacingFactor*ls - 9.0);
-
-    switch (data.valign) {
-    case RS_MTextData::VAMiddle:
-        textLine->move(RS_Vector(0.0, vSize/2.0));
-        break;
-
-    case RS_MTextData::VABottom:
-        textLine->move(RS_Vector(0.0, vSize));
-        break;
-
-    default:
-        break;
-    }
-
-    // Scale:
-    textLine->scale(RS_Vector(0.0,0.0),
-                    RS_Vector(data.height/9.0, data.height/9.0));
-
-    textLine->forcedCalculateBorders();
-
-    // Update actual text size (before rotating, after scaling!):
-    if (textLine->getSize().x>usedTextWidth) {
-        usedTextWidth = textLine->getSize().x;
-    }
-
-    usedTextHeight += data.height*data.lineSpacingFactor*ls;
-
-    // Gets the distance over text base-line (before rotating, after scaling!):
-    double textTail = textLine->getMin().y;
-
-    // Rotate:
-    textLine->rotate(RS_Vector(0.0,0.0), data.angle);
-
-    // Move:
-    textLine->move(data.insertionPoint);
-    textLine->setPen(RS_Pen(RS2::FlagInvalid));
-    textLine->setLayer(NULL);
-    textLine->forcedCalculateBorders();
-
-    addEntity(textLine);
-    return textTail;
-}
-
 
 RS_Vector RS_MText::getNearestEndpoint(const RS_Vector& coord, double* dist)const {
     if (dist) {
@@ -569,7 +1084,6 @@ RS_Vector RS_MText::getNearestEndpoint(const RS_Vector& coord, double* dist)cons
     }
     return data.insertionPoint;
 }
-
 
 RS_VectorSolutions RS_MText::getRefPoints() const{
 		return RS_VectorSolutions({data.insertionPoint});
@@ -581,8 +1095,6 @@ void RS_MText::move(const RS_Vector& offset) {
 //    update();
 }
 
-
-
 void RS_MText::rotate(const RS_Vector& center, const double& angle) {
     RS_Vector angleVector(angle);
     RS_EntityContainer::rotate(center, angleVector);
@@ -590,6 +1102,7 @@ void RS_MText::rotate(const RS_Vector& center, const double& angle) {
     data.angle = RS_Math::correctAngle(data.angle+angle);
 //    update();
 }
+
 void RS_MText::rotate(const RS_Vector& center, const RS_Vector& angleVector) {
     RS_EntityContainer::rotate(center, angleVector);
     data.insertionPoint.rotate(center, angleVector);
@@ -597,16 +1110,12 @@ void RS_MText::rotate(const RS_Vector& center, const RS_Vector& angleVector) {
 //    update();
 }
 
-
-
 void RS_MText::scale(const RS_Vector& center, const RS_Vector& factor) {
     data.insertionPoint.scale(center, factor);
     data.width*=factor.x;
     data.height*=factor.x;
     update();
 }
-
-
 
 void RS_MText::mirror(const RS_Vector& axisPoint1, const RS_Vector& axisPoint2) {
     data.insertionPoint.mirror(axisPoint1, axisPoint2);

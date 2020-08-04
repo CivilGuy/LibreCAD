@@ -24,8 +24,9 @@
 **
 **********************************************************************/
 
-#include<iostream>
-#include<cmath>
+#include <iostream>
+#include <cmath>
+#include <sstream>
 #include "rs_insert.h"
 
 #include "rs_arc.h"
@@ -85,6 +86,20 @@ RS_Entity* RS_Insert::clone() const{
 	return i;
 }
 
+std::string RS_Insert::dump() {
+    std::stringstream ssOut;
+    std::string strLayer;
+    
+    ssOut << "id = " << this->id << ", layer is (" << strLayer << "), visible = " << this->isVisible() 
+      << ",\npen is (" << pen << "), name is " << data.name.toStdString() << ", insertionPoint is " << data.insertionPoint
+      << ", minV is " << minV << ", maxV is " << maxV
+      << ",\nscaleFactor is " << data.scaleFactor << ", angle is " << data.angle 
+      << ", cols/rows are " << data.cols << "/" << data.rows 
+      << ", spacing is " << data.spacing << ", blocksource is " << data.blockSource
+      << ", and update mode is " << data.updateMode << "\n";
+
+    return ssOut.str();
+}
 
 /**
  * Updates the entity buffer of this insert entity. This method
@@ -228,14 +243,12 @@ void RS_Insert::update() {
 
                 ne->setPen(tmpPen);
 
-                ne->setUpdateEnabled(true);
+                                ne->setUpdateEnabled(true);
 
-                // insert must be updated even in preview mode
-                if (data.updateMode != RS2::PreviewUpdate
-                        || ne->rtti() == RS2::EntityInsert) {
-                    //RS_DEBUG->print("RS_Insert::update: updating new entity");
-                    ne->update();
-                }
+                                if (data.updateMode!=RS2::PreviewUpdate) {
+//                                        RS_DEBUG->print("RS_Insert::update: updating new entity");
+                                        ne->update();
+                                }
 
 //                                RS_DEBUG->print("RS_Insert::update: adding new entity");
                 appendEntity(ne);
@@ -327,14 +340,18 @@ RS_Vector RS_Insert::getNearestRef(const RS_Vector& coord,
 
 
 void RS_Insert::move(const RS_Vector& offset) {
-        RS_DEBUG->print("RS_Insert::move: offset: %f/%f",
-                offset.x, offset.y);
-        RS_DEBUG->print("RS_Insert::move1: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
+    RS_DEBUG->print("RS_Insert::move: offset: %f/%f",
+            offset.x, offset.y);
+    RS_DEBUG->print("RS_Insert::move1: insertionPoint: %f/%f",
+            data.insertionPoint.x, data.insertionPoint.y);
     data.insertionPoint.move(offset);
-        RS_DEBUG->print("RS_Insert::move2: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
-    update();
+    RS_DEBUG->print("RS_Insert::move2: insertionPoint: %f/%f",
+            data.insertionPoint.x, data.insertionPoint.y);
+
+    if (data.updateMode != RS2::NoUpdate) {
+        update();
+        //calculateBorders();
+    }
 }
 
 
