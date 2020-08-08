@@ -138,7 +138,6 @@ unsigned int LC_CodeTag::getFinalEnd() {
     } else { // regular 'settings' tag
         nEnd = this->text.indexOf(';') + 1;
     }
-    std::cout << "getFinalEnd(): nEnd is now " << nEnd << "\n";
     return (nEnd == -1) ? text.length() : (nEnd + this->starttag);
 }
 
@@ -175,7 +174,7 @@ void LC_MTextTabGroup::loadFrom(const QString& strTabs) {
             kind    = BulletIdx;
             break;
         default:
-            std::cout << "LC_MTextTabGroup::loadFrom() - unknown code \'" << strTabs[n2].toLatin1() << "\'\n";
+            // TODO RS_DEBUG->print( << "LC_MTextTabGroup::loadFrom() - unknown code \'" << strTabs[n2].toLatin1() << "\'\n";
             break;
         }
         ++n1;
@@ -427,7 +426,7 @@ void RS_MText::getSecnStarts(QList<unsigned int>& vecStarts) {
                     n = data.text.indexOf(';', n);
                     // TODO vv - probably want formal exception or assertion here
                     if (n == -1) { // vvv TODO - replace with RS_DEBUG->print calls
-                        std::cout << "Bad text: code not ended properly.\n"; return;
+                        // TODO RS_DEBUG->print( << "Bad text: code not ended properly.\n"; return;
                     };
                 } else if (data.text[n] == 'P') { // 'hard' paragraph break
                     // single character, but needs to be treated as full rich code
@@ -449,10 +448,10 @@ void RS_MText::getSecnStarts(QList<unsigned int>& vecStarts) {
                     }
                     n = data.text.indexOf(';', n); // but could \S have spans within itself? FIXME later.
                     if (n == -1) {
-                        std::cout << "Bad text: stack code not ended properly.\n"; return;
+                        // TODO RS_DEBUG->print( << "Bad text: stack code not ended properly.\n"; return;
                     } else vecStarts.push_back(n);
                 } else {
-                    std::cout << "Bad text: Unrecognized escape code.\n";
+                    // TODO RS_DEBUG->print( << "Bad text: Unrecognized escape code.\n";
                 }
             }
             break;
@@ -527,12 +526,12 @@ void RS_MText::setText(const QString& t) {
     if (t.isEmpty()) return;
     
     RS_DEBUG->setLevel(RS_Debug::D_DEBUGGING); // show all debug messages
-    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "  Begin setText()\n");
+    RS_DEBUG->print("  Begin setText()\n");
     
     data.text = t;
     
     QList<unsigned int> vecSecnStarts;
-    getSecnStarts(vecSecnStarts);
+    getSecnStarts(vecSecnStarts);  // TODO: TEST -- see getSecnStarts() for separate testing
     
     RS_DEBUG->print("vecSecnStarts is %s", dumpQList(vecSecnStarts).c_str());
 
@@ -542,6 +541,8 @@ void RS_MText::setText(const QString& t) {
     unsigned int nchr = 0;
     
     if ((2 < vecSecnStarts.size()) && (vecSecnStarts.size() < 5)) { 
+        // TODO: TEST -- might test this by ___
+        
         // no more than one display section
         
         // replace any '\~' with nbsp - simplest that way
@@ -554,11 +555,11 @@ void RS_MText::setText(const QString& t) {
 
         while (nchr < vecSecnStarts.at(1)) {
             LC_CodeTag ct(data.text, &nchr);
-            std::cout << "*A* - code tag text is \'" << ct.text.toStdString().c_str() << "\" and nchr is " << nchr << "\n";
+            // TODO RS_DEBUG->print( << "*A* - code tag text is \'" << ct.text.toStdString().c_str() << "\" and nchr is " << nchr << "\n";
             data.applyCode(ct);
         }
 
-        std::cout << "MText data is now:\n" << data;
+        // TODO RS_DEBUG->print( << "MText data is now:\n" << data;
 
         /* Now add insert for each char */
 
@@ -615,7 +616,7 @@ void RS_MText::setText(const QString& t) {
           insDataTemp.insertionPoint.x -= netLetterSpace;
         
         this->maxV.x = insDataTemp.insertionPoint.x;
-        std::cout << "End of setText(), single display section\n"; // << *this;
+        // TODO RS_DEBUG->print( << "End of setText(), single display section\n"; // << *this;
 
     } else { // more than one display section
 
@@ -654,7 +655,7 @@ void RS_MText::setText(const QString& t) {
             maxV.x = entities.back()->getMax().x; // um, if glyph holder, might have final space to figure -?
             datanow.insertionPoint.x = maxV.x;    // ^^
         }
-        std::cout << "End of setText(), multiple display section\n";
+        // TODO RS_DEBUG->print( << "End of setText(), multiple display section\n";
     }
 
     if ((parent == nullptr) || (parent->rtti() != RS2::EntityMText)) {
@@ -748,26 +749,17 @@ bool RS_MText::hasGlyphs() {
 }
 
 RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rightMargin) { 
-    std::cout << "  Begin layout() - data.text is \'" << data.text.toStdString() 
-      << "\', posnV is " << posnV << ", leftMargin is " << leftMargin 
-      << " and rightMargin is " << rightMargin << "\n";
 
     RS_Vector delta(posnV - data.insertionPoint);    
     this->move(delta);
     
     RS_Vector rtrnV(data.insertionPoint);
-
-    std::cout << "This insertionPoint is " << data.insertionPoint 
-      << ", this maxV is " << maxV << ", and this minV is " << minV << "\n";
     
     if (this->wantsLineReturn(leftMargin)) {
         delta.set((leftMargin - data.insertionPoint.x), 
           (-(data.height * STDLINESPACE * data.lineSpacingFactor + data.vertClear)));
         this->move(delta);
         rtrnV = maxV;
-
-        std::cout << "  Made forced break. This insertionPoint is " << data.insertionPoint
-          << ", this maxV is " << maxV << ", and this minV is " << minV << "\n";
     }
     
     // otherwise:
@@ -806,13 +798,10 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
     usedTextWidth  = getSize().x;
     usedTextHeight = getSize().y;
     
-    std::cout << "  Finished layout.  rtrnV is " << rtrnV << "\n"
-      << "this minV is " << minV << " and maxV is " << maxV << "\n\n";
     return rtrnV;
 }
 
 bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
-    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "\nBegin wordwrap. MText is %s", this->dump().c_str());
     bool iswrap = false;
 
     if (this->hasGlyphs()) {
@@ -837,8 +826,6 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
         }
         //? assert (*itrTxt == ((RS_Insert *)(*itrGlyph))->getName()[0]);
         // (should be able to run these as a test)
-        std::cout << "*A1* itrTxt is on \'" << (*itrTxt).toLatin1() << "\' and itrGlyph is on \'" 
-          << ((RS_Insert *)(*itrGlyph))->getName().toStdString() << "\'\n";
         
         if (itrGlyph == (entities.end() - 1)) { // entire line fits without wordwrap
             return false;
@@ -848,8 +835,6 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
             while ((itrGlyph > entities.begin()) && !(*itrTxt).isSpace()) {
                 --itrTxt; --itrGlyph;
             }
-            std::cout << "*A2* itrTxt is on \'" << (*itrTxt).toLatin1() << "\' and itrGlyph is on \'" 
-              << ((RS_Insert *)(*itrGlyph))->getName().toStdString()<< "\'\n";
             if ((*itrTxt).isSpace()) {
                 // itrGlyph has overshot it, maybe to begin() entity even
                 ++itrGlyph; ++itrTxt; // place where break needs to take place
@@ -870,15 +855,7 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
         
         tempents.push_back(new RS_MText(this, datanow));
         tempents.push_back(new RS_MText(this, datanow));
-        
-        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, 
-          "Before split, itrGlyph is at \'%s\' and itrTxt is at \'%c\'\n", 
-          ((RS_Insert *)*itrGlyph)->getName().toStdString().c_str(), (*itrTxt).toLatin1());
-        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, 
-          "Left text will be \"%s\" and right text will be \"%s\"\n",
-          data.text.left(itrTxt - data.text.begin()).toStdString().c_str(),
-          data.text.right(data.text.end() - itrTxt).toStdString().c_str());
-        
+                
         ((RS_MText *)(tempents.front()))->resetFrom(entities.begin(), itrGlyph, 
           data.text.left(itrTxt - data.text.begin()));
         RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "After split, tempents.front() is %s",
@@ -902,7 +879,6 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
         this->entities.swap(tempents);
         iswrap = true;
         
-        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "\n\nFinished line break - this is now %s", this->dump().c_str()); 
     } else {
         RS_MText *pLastChild = (RS_MText *)entities.takeLast();
         while (pLastChild->wordwrap(leftMarg, rightMarg)) {
@@ -944,13 +920,11 @@ bool RS_MText::wantsLineReturn(double leftMargin) {
 }
 
 void RS_MText::setDecorations() { // called initially by top MText, then recursive
-    std::cout << "  Begin setDecorations()\n";
     if ((data.decoration != RS_MTextData::MTextDecor::None) && !data.multiLine) { // for now, only supports underline
         double y_ul = minV.y - data.height * DROPUNDERLINE;
         RS_LineData lineData(RS_Vector(minV.x, y_ul), RS_Vector(maxV.x, y_ul));
 
         entities.push_back(new RS_Line(this, lineData));
-        std::cout << "  Added underline " << *((RS_Line *)entities.back()) << "\n";
     } else if (!this->hasGlyphs()) {
         for (RS_Entity* child: entities) {
             ((RS_MText *)child)->setDecorations();
