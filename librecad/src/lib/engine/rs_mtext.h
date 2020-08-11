@@ -246,8 +246,6 @@ struct RS_MTextData {
     void resetOneUseVals();
 };
 
-std::ostream& operator << (std::ostream& os, const RS_MTextData& td);
-
 /**
  * Class for a text entity.
  *

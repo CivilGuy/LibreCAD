@@ -26,6 +26,7 @@
 **********************************************************************/
 
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 #include <sstream>
 #include "rs_debug.h"
@@ -186,20 +187,6 @@ void LC_MTextTabGroup::loadFrom(const QString& strTabs) {
     }
 }
 
-std::ostream& operator << (std::ostream& out, const RS_MTextData &mtd) {
-
-    out << "  MText Data:\n      insertionPoint   ( " << mtd.insertionPoint.x << ", " 
-      << mtd.insertionPoint.y << ")\n      horz align       " << mtd.halign
-      << "\n      vert align       " << mtd.valign << "\n      height           " << mtd.height
-      << "\n      width            " << mtd.width << "\n      draw dir         " << mtd.drawingDirection
-      << "\n      line space style " << mtd.lineSpacingStyle << "\n      line space factr "
-      << mtd.lineSpacingFactor << "\n      text     \'" << mtd.text.toStdString() << "\'\n      textWidthFac     "
-      << mtd.textWidthFac << "\n      decoration       " << mtd.decoration
-      << "\n      style     \'" << mtd.style.toStdString() << "\'\n      angle            " << mtd.angle << "\n\n";
-
-    return out;
-}
-
 /**
  * Constructor.
  */
@@ -344,53 +331,17 @@ RS_Entity* RS_MText::clone() const{
 	return t;
 }
 
-std::string RS_MText::dump() { // DEBUG
+std::string RS_MText::dump() { // DEBUG - delete from final version
     std::stringstream strOut;
-    std::string strLayer;
-    if (layer == nullptr) strLayer = "missing";
-    else {
-        std::stringstream ssLayer;
-        ssLayer << layer;
-        strLayer = ssLayer.str();
-    }
-    strOut << "id = " << this->id << ", layer is (" << strLayer << "), visible = " << this->isVisible() 
-      << ",\npen is (" << pen << "),\ninsertionPoint is " << data.insertionPoint << ", minV is " << minV 
-      << ", maxV is " << maxV << ",\nattach flags are " << data.valign << " / " << data.halign 
-      << ", box width = " << data.width << ", text height = " << data.height 
-      << ", used text height = " << usedTextHeight << ", usedTextWidth = " << usedTextWidth
-      << ", drawing dir is " << data.drawingDirection << ", linespace flag is " << data.lineSpacingStyle
-      << ", line space factor = " << data.lineSpacingFactor
-      << ",\nraw text is \033[96m\'" << data.text.toLatin1().data()
-      << "\033[0m\',\ntext style is \'" << data.style.toLatin1().data() << "\', angle = " << data.angle 
-      << ", and updateMode is " << data.updateMode << "\n";
-    strOut << "This new version of mtext also has data from 'rich codes':\n"
-      << "Text width factor " << data.textWidthFac << ", hasTabs is " << ((data.tabs == nullptr) ? "false" : "true") 
-      << "\n, isMultiLine is " << (data.multiLine ? "true" : "false") 
-      << ", isListFmt is " << (data.hasListFormat() ? "true" : "false" ) 
-      << ", lineBreak type is " << data.linebreak 
-      << ", isListText is " << (data.isListText() ? "true" : "false") 
-      << ", decoration is " << data.decoration << ", and vertClear is " << data.vertClear << "\n\n";
-      
-    strOut << "This mtext has " << entities.size() << " children.\n";
-    if (entities.size()) {
-        strOut <<  "The first one is ";
-        if (entities.front()->rtti() == RS2::EntityLine) {
-            strOut << "a line: \n" << ((RS_Line *)entities.front())->dump();
-        } else if (entities.front()->rtti() == RS2::EntityInsert) {
-            strOut << "an insert: \n" << ((RS_Insert *)entities.front())->dump();
-        } else if (entities.front()->rtti() == RS2::EntityMText) {
-            strOut << "another mtext: \n" << ((RS_MText *)entities.front())->dump();
-        } else strOut << "unknown.\n";
-        
-        strOut <<  "The last one is ";
-        if (entities.back()->rtti() == RS2::EntityLine) {
-            strOut << "a line: \n" << ((RS_Line *)entities.back())->dump();
-        } else if (entities.back()->rtti() == RS2::EntityInsert) {
-            strOut << "an insert: \n" << ((RS_Insert *)entities.back())->dump();
-        } else if (entities.back()->rtti() == RS2::EntityMText) {
-            strOut << "another mtext: \n" << ((RS_MText *)entities.back())->dump();
-        } else strOut << "unknown.\n\n";
-    }
+
+    strOut << std::setbase(10) << std::setiosflags(std::ios_base::fixed) << std::setprecision(1) 
+      << "\033[36mMText:\033[0m\nid = " << this->id 
+      << ",\nraw text is \'" << data.text.toLatin1().data() << "\'\n"
+      << "                     x           y\n"
+      << "insertionPoint" << std::setw(10) << data.insertionPoint.x << std::setw(10) << data.insertionPoint.y << "\n"
+      << "minV          " << std::setw(10) << minV.x << std::setw(10) << minV.y << "\n"
+      << "maxV          " << std::setw(10) << maxV.x << std::setw(10) << maxV.y << "\n"
+      << "Contains glyphs? " << (hasGlyphs() ? "Yes" : "No") << "; child count is " << entities.size() << "\n";
     
     return strOut.str();
 }
@@ -749,9 +700,15 @@ bool RS_MText::hasGlyphs() {
 }
 
 RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rightMargin) { 
+    /* BEGIN Test Group 5 */
+    RS_DEBUG->print("==BEGIN TEST GROUP 5 ==\nleftMargin is %.1f and rightMargin is %.1f\n", leftMargin, rightMargin);
+    RS_DEBUG->print("posnV is (%.1f, %.1f)\n", posnV.x, posnV.y);
 
     RS_Vector delta(posnV - data.insertionPoint);    
     this->move(delta);
+    
+    RS_DEBUG->print("After initial move, this is %s", this->dump().c_str());
+    RS_DEBUG->print(""); // GDB breakpoint
     
     RS_Vector rtrnV(data.insertionPoint);
     
@@ -760,23 +717,33 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
           (-(data.height * STDLINESPACE * data.lineSpacingFactor + data.vertClear)));
         this->move(delta);
         rtrnV = maxV;
+        
+        RS_DEBUG->print(
+          "This wanted line return, so its been moved (%f, %f). Its rtrnV is now (%f, %f) and its maxV is (%f, %f)\n",
+          delta.x, delta.y, rtrnV.x, rtrnV.y, maxV.x, maxV.y);
     }
     
     // otherwise:
     if (this->hasGlyphs()) {
+        RS_DEBUG->print("This is a glyph holder.\n");
         if (this->data.isListText()) {
+            RS_DEBUG->print("  This is list text.\n");
             double localLeftMarg = leftMargin + data.tabs->find(LC_MTextTabGroup::LeftIndent).second;
             delta.set((localLeftMarg - data.insertionPoint.x), 0.0);
             this->move(delta);
             if (maxV.x <= rightMargin) {
+                RS_DEBUG->print("    This list text still fits onto one line.\n");
                 rtrnV.x = maxV.x;
             } else {
+                RS_DEBUG->print("    This list text needs word wrap.\n");
                 while (this->wordwrap(localLeftMarg, rightMargin)) {/* continue */};
                 rtrnV = ((RS_MText *)entities.back())->getMax();
             }
         } else if (maxV.x <= rightMargin) {
+            RS_DEBUG->print("  This regular text still fits onto one line.\n");
             rtrnV.x = maxV.x;
         } else if (this->data.linebreak == data.Never) {
+            RS_DEBUG->print("  This regular text still fits onto one line.\n");
             // move to next line if not already at left margin;
             // won't have been done yet and no other help for it
             if (data.insertionPoint.x > leftMargin) {
@@ -786,11 +753,15 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
                 rtrnV = maxV;
             }
         } else {
+            RS_DEBUG->print("  This regular text needs word wrap.\n");
             while (wordwrap(leftMargin, rightMargin)) {/* continue */}
             rtrnV = ((RS_MText *)entities.back())->getMax();
         }
     } else {
-        for (auto child : entities) {
+        RS_DEBUG->print("This mtext is NOT a glyph holder, so layout its children.\n");
+        for (auto &child : entities) {
+            // ^^ Huh.  Might have just caught a decently bad bug - had *not*
+            // been calling child as a ref, so would have been a copy, not the 'real thing'
             rtrnV = ((RS_MText *)child)->layout(rtrnV, leftMargin, rightMargin);
         }
     }
@@ -914,6 +885,9 @@ void RS_MText::resetFrom(
 
 bool RS_MText::wantsLineReturn(double leftMargin) {
     // only returns true if text is right of leftMargin
+    RS_DEBUG->print("Wants line return? %f > %f and ((%d == %d) or (%d and %d))",
+      data.insertionPoint.x,  leftMargin, data.linebreak, data.ForceNow, data.hasListFormat(), !data.isListText());
+    RS_DEBUG->print(""); // GDB breakpoint
     return (data.insertionPoint.x > leftMargin)
       && ((data.linebreak == data.ForceNow) 
         || (data.hasListFormat() && !data.isListText()));
@@ -1140,15 +1114,6 @@ void RS_MText::stretch(const RS_Vector& firstCorner, const RS_Vector& secondCorn
     }
 }
 
-
-
-/**
- * Dumps the point's data to stdout.
- */
-std::ostream& operator << (std::ostream& os, const RS_MText& p) {
-    os << " Text: " << p.getData() << "\n";
-    return os;
-}
 
 void RS_MText::draw(RS_Painter* painter, RS_GraphicView* view, double& /*patternOffset*/)
 {
