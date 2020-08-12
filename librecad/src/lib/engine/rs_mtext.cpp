@@ -312,14 +312,13 @@ RS_MText::RS_MText(RS_EntityContainer* parent,
                  const RS_MTextData& d)
         : RS_EntityContainer(parent), data(d) {
 
-    RS_DEBUG->setLevel(RS_Debug::D_INFORMATIONAL);
-    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "RS_MText constructor - parent is type %d", parent->rtti());
+    RS_DEBUG->print("RS_MText constructor - parent is type %d", parent->rtti());
 
     usedTextHeight = 0.0;
     usedTextWidth = 0.0;
     setText(data.text);
     
-    RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "End mtext constructor - object is now %s", dump().c_str());
+    RS_DEBUG->print("End mtext constructor - object is now %s", dump().c_str());
 
 }
 
@@ -343,6 +342,38 @@ std::string RS_MText::dump() { // DEBUG - delete from final version
       << "maxV          " << std::setw(10) << maxV.x << std::setw(10) << maxV.y << "\n"
       << "Contains glyphs? " << (hasGlyphs() ? "Yes" : "No") << "; child count is " << entities.size() << "\n";
     
+    return strOut.str();
+}
+
+std::string RS_MText::dumpGlyphs() { // DEBUG - delete from final version
+    std::stringstream strOut;
+
+    if (hasGlyphs()) {
+        RS_Insert *glyph0, *glyphM, *glyphF;
+        glyph0 = (RS_Insert *)*(entities.begin());
+        glyphM = (RS_Insert *)*(entities.begin() + (entities.size()/2));
+        glyphF = (RS_Insert *)*(entities.end() - 1);
+        RS_Vector insPt0 = glyph0->getInsertionPoint();
+        RS_Vector insPtM = glyph0->getInsertionPoint();
+        RS_Vector insPtF = glyph0->getInsertionPoint();
+
+        strOut << std::setbase(10) << std::setiosflags(std::ios_base::fixed) << std::setprecision(1) 
+          << "\033[36mChild Glyphs:\033[0m   insert Point   minV     maxV\n"
+          << "First \'" << glyph0->getName().toLatin1().data() << "\'  " 
+          << insPt0.x << ", " << insPt0.y << "   "
+          << glyph0->getMin().x << glyph0->getMin().y << "   "
+          << glyph0->getMax().x << glyph0->getMax().y << "\n"
+
+          << "Middle \'" << glyphM->getName().toLatin1().data() << "\'  " 
+          << insPtM.x << ", " << insPtM.y  << "   "
+          << glyphM->getMin().x << ", " << glyphM->getMin().y << "   "
+          << glyphM->getMax().x << ", " << glyphM->getMax().y << "\n"
+
+          << "Last \'" << glyphF->getName().toLatin1().data() << "\'  " 
+          << insPtF.x << ", " << insPtF.y  << "   "
+          << glyphF->getMin().x << ", " << glyphF->getMin().y << "   "
+          << glyphF->getMax().x << ", " << glyphF->getMax().y << "\n\n";
+    }
     return strOut.str();
 }
 
@@ -719,7 +750,7 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
         rtrnV = maxV;
         
         RS_DEBUG->print(
-          "This wanted line return, so its been moved (%f, %f). Its rtrnV is now (%f, %f) and its maxV is (%f, %f)\n",
+          "This wanted line return, so its been moved (%.1f, %.1f). Its rtrnV is now (%.1f, %.1f) and its maxV is (%.1f, %.1f)\n",
           delta.x, delta.y, rtrnV.x, rtrnV.y, maxV.x, maxV.y);
     }
     
@@ -769,13 +800,20 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
     usedTextWidth  = getSize().x;
     usedTextHeight = getSize().y;
     
+    RS_DEBUG->print(
+      "Finished layout() for %s  rtrnV is now (%f, %f); usedTextWidth is now %f, and usedTextHeight is now %f\n",
+      this->dump().c_str(), rtrnV.x, rtrnV.y, usedTextWidth, usedTextHeight);
+    
     return rtrnV;
 }
 
 bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
     bool iswrap = false;
+    RS_DEBUG->print("Begin wordwrap(). hasGlyphs is %d\n", this->hasGlyphs());
 
     if (this->hasGlyphs()) {
+        RS_DEBUG->print("Before word split, representative glyphs are:%s", this->dumpGlyphs().c_str());
+    
         QList<RS_Entity *>::iterator itrGlyph = entities.end() - 1;
         QString::iterator itrTxt = data.text.end() - 1;
         
@@ -789,7 +827,7 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
          * space found, could still be the case that a single char of chunk
          * would fit; still need to see if text following it is a space */
          
-        /* Try *A* (again?!?) */
+        /* Try method *A* */
         while ((itrGlyph > entities.begin()) && 
           ((((RS_Insert *)(*itrGlyph))->getMax().x > rightMarg))) {
             --itrTxt; while((*itrTxt).isSpace()) --itrTxt;
@@ -864,6 +902,10 @@ bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
     return iswrap;
 }
 
+/**
+ * Needed during word wrap to change out a child object's text and
+ * glyphs without otherwise interfering with child's properties, except
+ * as shown */
 void RS_MText::resetFrom(
       const QList<RS_Entity *>::iterator& startEnts,
       const QList<RS_Entity *>::iterator& endEnts,
@@ -878,7 +920,9 @@ void RS_MText::resetFrom(
     data.insertionPoint.x = ((RS_Insert *)(*startEnts))->getInsertionPoint().x; // .y is unchanged 
     // well enough, since data is otherwise copied faithfully
     
-    maxV.set(((RS_Insert *)entities.back())->getInsertionPoint().x, data.insertionPoint.y);
+    maxV.set(((RS_Insert *)entities.back())->getMax().x, data.insertionPoint.y);
+    // ^^ Corrected from getInsertionPoint() to getMax()
+    
     minV.set(data.insertionPoint.x, ((RS_Insert *)entities.front())->getInsertionPoint().y);
     // not strictly accurate because of glyph descenders, but good enough
 }

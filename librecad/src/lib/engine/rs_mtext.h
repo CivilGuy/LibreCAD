@@ -260,6 +260,7 @@ public:
     virtual RS_Entity* clone() const override;
     
     std::string dump(); //XXX DEBUG
+    std::string dumpGlyphs(); //XXX DEBUG - delete from final version
 
     /**	@return RS2::EntityText */
     virtual RS2::EntityType rtti() const override{

@@ -39,7 +39,7 @@
 RS_Document::RS_Document(RS_EntityContainer* parent)
         : RS_EntityContainer(parent), RS_Undo() {
 
-    RS_DEBUG->print("RS_Document::RS_Document() ");
+    //XXX RS_DEBUG->print("RS_Document::RS_Document() ");
 
     filename = "";
     autosaveFilename = "Unnamed";

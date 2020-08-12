@@ -107,8 +107,8 @@ std::string RS_Insert::dump() {
  */
 void RS_Insert::update() {
 
-        RS_DEBUG->print("RS_Insert::update");
-        RS_DEBUG->print("RS_Insert::update: name: %s", data.name.toLatin1().data());
+        //XXX RS_DEBUG->print("RS_Insert::update");
+        //XXX RS_DEBUG->print("RS_Insert::update: name: %s", data.name.toLatin1().data());
 //        RS_DEBUG->print("RS_Insert::update: insertionPoint: %f/%f",
 //                data.insertionPoint.x, data.insertionPoint.y);
 
@@ -121,17 +121,17 @@ void RS_Insert::update() {
     RS_Block* blk = getBlockForInsert();
 	if (!blk) {
 		//return nullptr;
-				RS_DEBUG->print("RS_Insert::update: Block is nullptr");
+				//XXX RS_DEBUG->print("RS_Insert::update: Block is nullptr");
         return;
     }
 
     if (isUndone()) {
-                RS_DEBUG->print("RS_Insert::update: Insert is in undo list");
+                //XXX RS_DEBUG->print("RS_Insert::update: Insert is in undo list");
         return;
     }
 
         if (fabs(data.scaleFactor.x)<1.0e-6 || fabs(data.scaleFactor.y)<1.0e-6) {
-                RS_DEBUG->print("RS_Insert::update: scale factor is 0");
+                //XXX RS_DEBUG->print("RS_Insert::update: scale factor is 0");
                 return;
         }
 
@@ -142,10 +142,10 @@ void RS_Insert::update() {
 	while ( (e = it.current())  ) {
         ++it;*/
 
-        RS_DEBUG->print("RS_Insert::update: cols: %d, rows: %d",
-                data.cols, data.rows);
-        RS_DEBUG->print("RS_Insert::update: block has %d entities",
-                blk->count());
+        //XXX RS_DEBUG->print("RS_Insert::update: cols: %d, rows: %d",
+        //XXX         data.cols, data.rows);
+        //XXX RS_DEBUG->print("RS_Insert::update: block has %d entities",
+        //XXX         blk->count());
 //int i_en_counts=0;
 		for(auto e: *blk){
         for (int c=0; c<data.cols; ++c) {
@@ -258,7 +258,7 @@ void RS_Insert::update() {
     }
     calculateBorders();
 
-        RS_DEBUG->print("RS_Insert::update: OK");
+        //XXX RS_DEBUG->print("RS_Insert::update: OK");
 }
 
 
@@ -340,13 +340,13 @@ RS_Vector RS_Insert::getNearestRef(const RS_Vector& coord,
 
 
 void RS_Insert::move(const RS_Vector& offset) {
-    RS_DEBUG->print("RS_Insert::move: offset: %f/%f",
-            offset.x, offset.y);
-    RS_DEBUG->print("RS_Insert::move1: insertionPoint: %f/%f",
-            data.insertionPoint.x, data.insertionPoint.y);
+    //XXX RS_DEBUG->print("RS_Insert::move: offset: %f/%f",
+    //XXX         offset.x, offset.y);
+    //XXX RS_DEBUG->print("RS_Insert::move1: insertionPoint: %f/%f",
+    //XXX         data.insertionPoint.x, data.insertionPoint.y);
     data.insertionPoint.move(offset);
-    RS_DEBUG->print("RS_Insert::move2: insertionPoint: %f/%f",
-            data.insertionPoint.x, data.insertionPoint.y);
+    //XXX RS_DEBUG->print("RS_Insert::move2: insertionPoint: %f/%f",
+    //XXX         data.insertionPoint.x, data.insertionPoint.y);
 
     if (data.updateMode != RS2::NoUpdate) {
         update();
@@ -357,38 +357,38 @@ void RS_Insert::move(const RS_Vector& offset) {
 
 
 void RS_Insert::rotate(const RS_Vector& center, const double& angle) {
-        RS_DEBUG->print("RS_Insert::rotate1: insertionPoint: %f/%f "
-            "/ center: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y,
-                center.x, center.y);
+        //XXX RS_DEBUG->print("RS_Insert::rotate1: insertionPoint: %f/%f "
+        //XXX     "/ center: %f/%f",
+        //XXX         data.insertionPoint.x, data.insertionPoint.y,
+        //XXX         center.x, center.y);
     data.insertionPoint.rotate(center, angle);
     data.angle = RS_Math::correctAngle(data.angle+angle);
-        RS_DEBUG->print("RS_Insert::rotate2: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
+        //XXX RS_DEBUG->print("RS_Insert::rotate2: insertionPoint: %f/%f",
+         //XXX        data.insertionPoint.x, data.insertionPoint.y);
     update();
 }
 void RS_Insert::rotate(const RS_Vector& center, const RS_Vector& angleVector) {
-        RS_DEBUG->print("RS_Insert::rotate1: insertionPoint: %f/%f "
-            "/ center: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y,
-                center.x, center.y);
+        //XXX RS_DEBUG->print("RS_Insert::rotate1: insertionPoint: %f/%f "
+        //XXX     "/ center: %f/%f",
+        //XXX         data.insertionPoint.x, data.insertionPoint.y,
+        //XXX         center.x, center.y);
     data.insertionPoint.rotate(center, angleVector);
     data.angle = RS_Math::correctAngle(data.angle+angleVector.angle());
-        RS_DEBUG->print("RS_Insert::rotate2: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
+        //XXX RS_DEBUG->print("RS_Insert::rotate2: insertionPoint: %f/%f",
+        //XXX         data.insertionPoint.x, data.insertionPoint.y);
     update();
 }
 
 
 
 void RS_Insert::scale(const RS_Vector& center, const RS_Vector& factor) {
-        RS_DEBUG->print("RS_Insert::scale1: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
+        //XXX RS_DEBUG->print("RS_Insert::scale1: insertionPoint: %f/%f",
+        //XXX         data.insertionPoint.x, data.insertionPoint.y);
     data.insertionPoint.scale(center, factor);
     data.scaleFactor.scale(RS_Vector(0.0, 0.0), factor);
     data.spacing.scale(RS_Vector(0.0, 0.0), factor);
-        RS_DEBUG->print("RS_Insert::scale2: insertionPoint: %f/%f",
-                data.insertionPoint.x, data.insertionPoint.y);
+        //XXX RS_DEBUG->print("RS_Insert::scale2: insertionPoint: %f/%f",
+        //XXX         data.insertionPoint.x, data.insertionPoint.y);
     update();
 }
 

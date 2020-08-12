@@ -63,7 +63,7 @@ void RS_BlockList::clear() {
  * Listeners are notified.
  */
 void RS_BlockList::activate(const QString& name) {
-    RS_DEBUG->print("RS_BlockList::activateBlock");
+    //XXX RS_DE->print("RS_BlockList::activateBlock");
 
     activate(find(name));
 }
@@ -73,7 +73,7 @@ void RS_BlockList::activate(const QString& name) {
  * Listeners are notified.
  */
 void RS_BlockList::activate(RS_Block* block) {
-    RS_DEBUG->print("RS_BlockList::activateBlock");
+    //XXX RS_DE->print("RS_BlockList::activateBlock");
 	activeBlock = block;
 }
 
@@ -88,7 +88,7 @@ void RS_BlockList::activate(RS_Block* block) {
  * @return false: block already existed and was deleted.
  */
 bool RS_BlockList::add(RS_Block* block, bool notify) {
-    RS_DEBUG->print("RS_BlockList::add()");
+    //XXX RS_DE->print("RS_BlockList::add()");
 
 	if (!block) {
         return false;
@@ -136,7 +136,7 @@ void RS_BlockList::addNotification() {
  * the list but before it gets deleted.
  */
 void RS_BlockList::remove(RS_Block* block) {
-    RS_DEBUG->print("RS_BlockList::removeBlock()");
+    //XXX RS_DE->print("RS_BlockList::removeBlock()");
 
     // here the block is removed from the list but not deleted
     blocks.removeOne(block);
@@ -206,10 +206,10 @@ void RS_BlockList::editBlock(RS_Block* block, const RS_Block& source) {
  */
 RS_Block* RS_BlockList::find(const QString& name) {
     try {
-        RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): %s", name.toLatin1().constData());
+        //XXX RS_DE->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): %s", name.toLatin1().constData());
     }
     catch(...) {
-        RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): wrong name to find");
+        //XXX RS_DE->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): wrong name to find");
         return nullptr;
     }
 	// Todo : reduce this from O(N) to O(log(N)) complexity based on sorted list or hash
@@ -219,7 +219,7 @@ RS_Block* RS_BlockList::find(const QString& name) {
 			return b;
 		}
 	}
-    RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): bad");
+    //XXX RS_DE->print(RS_Debug::D_DEBUGGING, "RS_BlockList::find(): bad");
 	return nullptr;
 }
 

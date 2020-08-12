@@ -92,14 +92,14 @@ RS_EntityContainer::~RS_EntityContainer() {
 
 
 RS_Entity* RS_EntityContainer::clone() const{
-    RS_DEBUG->print("RS_EntityContainer::clone: ori autoDel: %d",
-                    autoDelete);
+    //XXX RS_DE->print("RS_EntityContainer::clone: ori autoDel: %d",
+    //XXX                 autoDelete);
 
     RS_EntityContainer* ec = new RS_EntityContainer(*this);
     ec->setOwner(autoDelete);
 
-    RS_DEBUG->print("RS_EntityContainer::clone: clone autoDel: %d",
-                    ec->isOwner());
+    //XXX RS_DEBUG->print("RS_EntityContainer::clone: clone autoDel: %d",
+    //XXX                 ec->isOwner());
 
     ec->detach();
     ec->initId();
@@ -116,8 +116,8 @@ RS_Entity* RS_EntityContainer::clone() const{
 void RS_EntityContainer::detach() {
     QList<RS_Entity*> tmp;
     bool autoDel = isOwner();
-    RS_DEBUG->print("RS_EntityContainer::detach: autoDel: %d",
-                    (int)autoDel);
+    //XXX RS_DE->print("RS_EntityContainer::detach: autoDel: %d",
+     //XXX                (int)autoDel);
     setOwner(false);
 
 	// make deep copies of all entities:
@@ -538,7 +538,7 @@ void RS_EntityContainer::adjustBorders(RS_Entity* entity) {
  * Recalculates the borders of this entity container.
  */
 void RS_EntityContainer::calculateBorders() {
-    RS_DEBUG->print("RS_EntityContainer::calculateBorders");
+    //XXX RS_DEBUG->print("RS_EntityContainer::calculateBorders");
 
 	resetBorders();
 	for (RS_Entity* e: entities){
@@ -554,8 +554,8 @@ void RS_EntityContainer::calculateBorders() {
         }
     }
 
-    RS_DEBUG->print("RS_EntityContainer::calculateBorders: size 1: %f,%f",
-                    getSize().x, getSize().y);
+    //XXX RS_DEBUG->print("RS_EntityContainer::calculateBorders: size 1: %f,%f",
+    //XXX                getSize().x, getSize().y);
 
     // needed for correcting corrupt data (PLANS.dxf)
     if (minV.x>maxV.x || minV.x>RS_MAXDOUBLE || maxV.x>RS_MAXDOUBLE
@@ -571,8 +571,8 @@ void RS_EntityContainer::calculateBorders() {
         maxV.y = 0.0;
     }
 
-    RS_DEBUG->print("RS_EntityCotnainer::calculateBorders: size: %f,%f",
-                    getSize().x, getSize().y);
+    //XXX RS_DEBUG->print("RS_EntityCotnainer::calculateBorders: size: %f,%f",
+    //XXX                getSize().x, getSize().y);
 
     //RS_DEBUG->print("  borders: %f/%f %f/%f", minV.x, minV.y, maxV.x, maxV.y);
 
@@ -655,7 +655,7 @@ void RS_EntityContainer::updateDimensions(bool autoText) {
         }
     }
 
-    RS_DEBUG->print("RS_EntityContainer::updateDimensions() OK");
+    //XXX RS_DEBUG->print("RS_EntityContainer::updateDimensions() OK");
 }
 
 
@@ -665,25 +665,25 @@ void RS_EntityContainer::updateDimensions(bool autoText) {
  */
 void RS_EntityContainer::updateInserts() {
 
-    RS_DEBUG->print("RS_EntityContainer::updateInserts() ID/type: %d/%d", getId(), rtti());
+    //XXX RS_DEBUG->print("RS_EntityContainer::updateInserts() ID/type: %d/%d", getId(), rtti());
 
     for (RS_Entity* e: entities){
         //// Only update our own inserts and not inserts of inserts
         if (e->rtti()==RS2::EntityInsert  /*&& e->getParent()==this*/) {
             ((RS_Insert*)e)->update();
-            RS_DEBUG->print("RS_EntityContainer::updateInserts: updated ID/type: %d/%d", e->getId(), e->rtti());
+            //XXX RS_DEBUG->print("RS_EntityContainer::updateInserts: updated ID/type: %d/%d", e->getId(), e->rtti());
         } else if (e->isContainer()) {
             if (e->rtti()==RS2::EntityHatch) {
-                RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_EntityContainer::updateInserts: skip hatch ID/type: %d/%d", e->getId(), e->rtti());
+                //XXX RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_EntityContainer::updateInserts: skip hatch ID/type: %d/%d", e->getId(), e->rtti());
             } else {
-                RS_DEBUG->print("RS_EntityContainer::updateInserts: update container ID/type: %d/%d", e->getId(), e->rtti());
+                //XXX RS_DEBUG->print("RS_EntityContainer::updateInserts: update container ID/type: %d/%d", e->getId(), e->rtti());
                 ((RS_EntityContainer*)e)->updateInserts();
             }
         } else {
-            RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_EntityContainer::updateInserts: skip entity ID/type: %d/%d", e->getId(), e->rtti());
+            //XXX RS_DEBUG->print(RS_Debug::D_DEBUGGING, "RS_EntityContainer::updateInserts: skip entity ID/type: %d/%d", e->getId(), e->rtti());
         }
     }
-    RS_DEBUG->print("RS_EntityContainer::updateInserts() ID/type: %d/%d OK", getId(), rtti());
+    //XXX RS_DEBUG->print("RS_EntityContainer::updateInserts() ID/type: %d/%d OK", getId(), rtti());
 }
 
 
@@ -694,7 +694,7 @@ void RS_EntityContainer::updateInserts() {
  */
 void RS_EntityContainer::renameInserts(const QString& oldName,
                                        const QString& newName) {
-    RS_DEBUG->print("RS_EntityContainer::renameInserts()");
+    //XXX RS_DEBUG->print("RS_EntityContainer::renameInserts()");
 
     //for (RS_Entity* e=firstEntity(RS2::ResolveNone);
 	//        e;
@@ -711,7 +711,7 @@ void RS_EntityContainer::renameInserts(const QString& oldName,
         }
     }
 
-    RS_DEBUG->print("RS_EntityContainer::renameInserts() OK");
+    //XXX RS_DEBUG->print("RS_EntityContainer::renameInserts() OK");
 
 }
 
@@ -720,7 +720,7 @@ void RS_EntityContainer::renameInserts(const QString& oldName,
  */
 void RS_EntityContainer::updateSplines() {
 
-    RS_DEBUG->print("RS_EntityContainer::updateSplines()");
+    //XXX RS_DEBUG->print("RS_EntityContainer::updateSplines()");
 
 	for (RS_Entity* e: entities){
         //// Only update our own inserts and not inserts of inserts
@@ -731,7 +731,7 @@ void RS_EntityContainer::updateSplines() {
         }
     }
 
-    RS_DEBUG->print("RS_EntityContainer::updateSplines() OK");
+    //XXX RS_DEBUG->print("RS_EntityContainer::updateSplines() OK");
 }
 
 
@@ -1438,7 +1438,7 @@ double RS_EntityContainer::getDistanceToPoint(const RS_Vector& coord,
                                               RS2::ResolveLevel level,
                                               double solidDist) const{
 
-    RS_DEBUG->print("RS_EntityContainer::getDistanceToPoint");
+    //XXX RS_DEBUG->print("RS_EntityContainer::getDistanceToPoint");
 
 
     double minDist = RS_MAXDOUBLE;      // minimum measured distance
@@ -1449,13 +1449,13 @@ double RS_EntityContainer::getDistanceToPoint(const RS_Vector& coord,
 	for(auto e: entities){
 
         if (e->isVisible()) {
-            RS_DEBUG->print("entity: getDistanceToPoint");
-            RS_DEBUG->print("entity: %d", e->rtti());
+            //XXX RS_DEBUG->print("entity: getDistanceToPoint");
+            //XXX RS_DEBUG->print("entity: %d", e->rtti());
             // bug#426, need to ignore Images to find nearest intersections
             if(level==RS2::ResolveAllButTextImage && e->rtti()==RS2::EntityImage) continue;
             curDist = e->getDistanceToPoint(coord, &subEntity, level, solidDist);
 
-            RS_DEBUG->print("entity: getDistanceToPoint: OK");
+            //XXX RS_DEBUG->print("entity: getDistanceToPoint: OK");
 
 			/*
 			 * By using '<=', we will prefer the *last* item in the container if there are multiple
@@ -1484,7 +1484,7 @@ double RS_EntityContainer::getDistanceToPoint(const RS_Vector& coord,
 	if (entity) {
         *entity = closestEntity;
     }
-    RS_DEBUG->print("RS_EntityContainer::getDistanceToPoint: OK");
+    //XXX RS_DEBUG->print("RS_EntityContainer::getDistanceToPoint: OK");
 
     return minDist;
 }
@@ -1495,7 +1495,7 @@ RS_Entity* RS_EntityContainer::getNearestEntity(const RS_Vector& coord,
                                                 double* dist,
 												RS2::ResolveLevel level) const{
 
-    RS_DEBUG->print("RS_EntityContainer::getNearestEntity");
+    //XXX RS_DEBUG->print("RS_EntityContainer::getNearestEntity");
 
 	RS_Entity* e = nullptr;
 
@@ -1515,7 +1515,7 @@ RS_Entity* RS_EntityContainer::getNearestEntity(const RS_Vector& coord,
 	if (dist) {
         *dist = d;
     }
-    RS_DEBUG->print("RS_EntityContainer::getNearestEntity: OK");
+    //XXX RS_DEBUG->print("RS_EntityContainer::getNearestEntity: OK");
 
     return e;
 }
@@ -1537,7 +1537,7 @@ bool RS_EntityContainer::optimizeContours() {
 
 //    DEBUG_HEADER
 //    std::cout<<"loop with count()="<<count()<<std::endl;
-    RS_DEBUG->print("RS_EntityContainer::optimizeContours");
+    //XXX RS_DEBUG->print("RS_EntityContainer::optimizeContours");
 
     RS_EntityContainer tmp;
     tmp.setAutoUpdateBorders(false);
@@ -1612,14 +1612,14 @@ bool RS_EntityContainer::optimizeContours() {
                 QG_DIALOGFACTORY->commandMessage(
                             errMsg.arg(dist).arg(vpTmp.x).arg(vpTmp.y).arg(vpEnd.x).arg(vpEnd.y)
                             );
-                RS_DEBUG->print(RS_Debug::D_ERROR, "RS_EntityContainer::optimizeContours: hatch failed due to a gap");
+                //XXX RS_DEBUG->print(RS_Debug::D_ERROR, "RS_EntityContainer::optimizeContours: hatch failed due to a gap");
                 closed=false;
                 break;
             }
         }
         if(!next) { 	    //workaround if next is nullptr
 //      	    std::cout<<"RS_EntityContainer::optimizeContours: next is nullptr" <<std::endl;
-            RS_DEBUG->print("RS_EntityContainer::optimizeContours: next is nullptr");
+            //XXX RS_DEBUG->print("RS_EntityContainer::optimizeContours: next is nullptr");
 //			closed=false;	//workaround if next is nullptr
             break;			//workaround if next is nullptr
         } 					//workaround if next is nullptr
@@ -1651,10 +1651,10 @@ bool RS_EntityContainer::optimizeContours() {
 //    std::cout<<"RS_EntityContainer::optimizeContours: 6"<<std::endl;
 
     if(closed) {
-        RS_DEBUG->print("RS_EntityContainer::optimizeContours: OK");
+        //XXX RS_DEBUG->print("RS_EntityContainer::optimizeContours: OK");
     }
     else {
-        RS_DEBUG->print("RS_EntityContainer::optimizeContours: bad");
+        //XXX RS_DEBUG->print("RS_EntityContainer::optimizeContours: bad");
     }
 //    std::cout<<"RS_EntityContainer::optimizeContours: end: count()="<<count()<<std::endl;
 //    std::cout<<"RS_EntityContainer::optimizeContours: closed="<<closed<<std::endl;

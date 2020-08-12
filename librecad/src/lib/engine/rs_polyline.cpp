@@ -106,9 +106,9 @@ void RS_Polyline::removeLastVertex() {
 								data.endpoint = l->getEndpoint();
                         }
                         else {
-                                RS_DEBUG->print(RS_Debug::D_WARNING,
-                                        "RS_Polyline::removeLastVertex: "
-                                        "polyline contains non-atomic entity");
+                                //XXX RS_DEBUG->print(RS_Debug::D_WARNING,
+                                      //XXX   "RS_Polyline::removeLastVertex: "
+                                      //XXX   "polyline contains non-atomic entity");
                         }
                 }
         }
@@ -214,8 +214,8 @@ RS_Entity* RS_Polyline::createVertex(const RS_Vector& v, double bulge, bool prep
 
 	RS_Entity* entity=nullptr;
 
-    RS_DEBUG->print("RS_Polyline::createVertex: %f/%f to %f/%f bulge: %f",
-                    data.endpoint.x, data.endpoint.y, v.x, v.y, bulge);
+    //XXX RS_DEBUG->print("RS_Polyline::createVertex: %f/%f to %f/%f bulge: %f",
+                   //XXX  data.endpoint.x, data.endpoint.y, v.x, v.y, bulge);
 
     // create line for the polyline:
     if (fabs(bulge)<RS_TOLERANCE) {
@@ -300,10 +300,10 @@ RS_Entity* RS_Polyline::createVertex(const RS_Vector& v, double bulge, bool prep
  * Ends polyline and adds the last entity if the polyline is closed
  */
 void RS_Polyline::endPolyline() {
-        RS_DEBUG->print("RS_Polyline::endPolyline");
+        //XXX RS_DEBUG->print("RS_Polyline::endPolyline");
 
     if (isClosed()) {
-                RS_DEBUG->print("RS_Polyline::endPolyline: adding closing entity");
+                //XXX RS_DEBUG->print("RS_Polyline::endPolyline: adding closing entity");
 
         // remove old closing entity:
 		if (closingEntity) {
@@ -427,10 +427,10 @@ void RS_Polyline::updateEndpoints() {
  * To add entities use addVertex() or addSegment() instead.
  */
 void RS_Polyline::addEntity(RS_Entity* /*entity*/) {
-    RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Polyline::addEntity:"
-					" should never be called\n"
-					"use addVertex() or addSegment() instead"
-					);
+    //XXX RS_DEBUG->print(RS_Debug::D_WARNING, "RS_Polyline::addEntity:"
+					//XXX " should never be called\n"
+					//XXX "use addVertex() or addSegment() instead"
+					//XXX );
 	assert(false);
 }
 
