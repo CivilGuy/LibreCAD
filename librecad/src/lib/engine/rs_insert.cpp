@@ -25,6 +25,7 @@
 **********************************************************************/
 
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 #include <sstream>
 #include "rs_insert.h"
@@ -87,18 +88,16 @@ RS_Entity* RS_Insert::clone() const{
 }
 
 std::string RS_Insert::dump() {
-    std::stringstream ssOut;
-    std::string strLayer;
+    std::stringstream strOut;
     
-    ssOut << "id = " << this->id << ", layer is (" << strLayer << "), visible = " << this->isVisible() 
-      << ",\npen is (" << pen << "), name is " << data.name.toStdString() << ", insertionPoint is " << data.insertionPoint
-      << ", minV is " << minV << ", maxV is " << maxV
-      << ",\nscaleFactor is " << data.scaleFactor << ", angle is " << data.angle 
-      << ", cols/rows are " << data.cols << "/" << data.rows 
-      << ", spacing is " << data.spacing << ", blocksource is " << data.blockSource
-      << ", and update mode is " << data.updateMode << "\n";
+    strOut << std::setbase(10) << std::setiosflags(std::ios_base::fixed) << std::setprecision(1) 
+      << "\033[36mChild Glyph\033[0m    Insert Point            minV               maxV\n"
+      << "      \'" << data.name.toStdString() << "\'      " 
+      << data.insertionPoint.x << ", " << data.insertionPoint.y << "   "
+      << minV.x <<  ", " << minV.y << "   "
+      << maxV.x <<  ", " << maxV.y << "\n";
 
-    return ssOut.str();
+    return strOut.str();
 }
 
 /**

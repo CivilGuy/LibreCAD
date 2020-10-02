@@ -358,18 +358,18 @@ std::string RS_MText::dumpGlyphs() { // DEBUG - delete from final version
         RS_Vector insPtF = glyph0->getInsertionPoint();
 
         strOut << std::setbase(10) << std::setiosflags(std::ios_base::fixed) << std::setprecision(1) 
-          << "\033[36mChild Glyphs:\033[0m   insert Point   minV     maxV\n"
-          << "First \'" << glyph0->getName().toLatin1().data() << "\'  " 
+          << "\033[36mChild Glyphs\033[0m    Insert Point            minV               maxV\n"
+          << "First  \'" << glyph0->getName().toLatin1().data() << "\'     " 
           << insPt0.x << ", " << insPt0.y << "   "
-          << glyph0->getMin().x << glyph0->getMin().y << "   "
-          << glyph0->getMax().x << glyph0->getMax().y << "\n"
+          << glyph0->getMin().x << ", " << glyph0->getMin().y << "   "
+          << glyph0->getMax().x << ", " << glyph0->getMax().y << "\n"
 
-          << "Middle \'" << glyphM->getName().toLatin1().data() << "\'  " 
+          << "Middle \'" << glyphM->getName().toLatin1().data() << "\'     " 
           << insPtM.x << ", " << insPtM.y  << "   "
           << glyphM->getMin().x << ", " << glyphM->getMin().y << "   "
           << glyphM->getMax().x << ", " << glyphM->getMax().y << "\n"
 
-          << "Last \'" << glyphF->getName().toLatin1().data() << "\'  " 
+          << "Last   \'" << glyphF->getName().toLatin1().data() << "\'     " 
           << insPtF.x << ", " << insPtF.y  << "   "
           << glyphF->getMin().x << ", " << glyphF->getMin().y << "   "
           << glyphF->getMax().x << ", " << glyphF->getMax().y << "\n\n";
@@ -732,7 +732,7 @@ bool RS_MText::hasGlyphs() {
 
 RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rightMargin) { 
     /* BEGIN Test Group 5 */
-    RS_DEBUG->print("==BEGIN TEST GROUP 5 ==\nleftMargin is %.1f and rightMargin is %.1f\n", leftMargin, rightMargin);
+    RS_DEBUG->print("== BEGIN TEST GROUP 5 ==\nleftMargin is %.1f and rightMargin is %.1f\n", leftMargin, rightMargin);
     RS_DEBUG->print("posnV is (%.1f, %.1f)\n", posnV.x, posnV.y);
 
     RS_Vector delta(posnV - data.insertionPoint);    
@@ -767,26 +767,37 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
                 rtrnV.x = maxV.x;
             } else {
                 RS_DEBUG->print("    This list text needs word wrap.\n");
-                while (this->wordwrap(localLeftMarg, rightMargin)) {/* continue */};
-                rtrnV = ((RS_MText *)entities.back())->getMax();
+                RS_MText *pChunk = this->wordwrap(localLeftMarg, rightMargin, rtrnV);
+                while (pChunk != nullptr) {
+                    pChunk = pChunk->wordwrap(localLeftMarg, rightMargin, rtrnV);
+                };
+                // FIXME: rtrnV = ((RS_MText *)entities.back())->getMax();
             }
         } else if (maxV.x <= rightMargin) {
             RS_DEBUG->print("  This regular text still fits onto one line.\n");
             rtrnV.x = maxV.x;
         } else if (this->data.linebreak == data.Never) {
-            RS_DEBUG->print("  This regular text still fits onto one line.\n");
+            RS_DEBUG->print("  This chunk does not allow wordbreaks, but won't fit onto remainder of line.\n");
+            RS_DEBUG->print("Only hope is to move chunk down to next line.\n");
+
             // move to next line if not already at left margin;
             // won't have been done yet and no other help for it
             if (data.insertionPoint.x > leftMargin) {
                 RS_Vector delta((leftMargin - data.insertionPoint.x), 
                   (-data.height * STDLINESPACE * data.lineSpacingFactor));
                 this->move(delta);
+                RS_DEBUG->print("And that only if chunk is moved left by some amount. Delta is (%.1f,%.1f).\n",
+                  delta.x, delta.y);
                 rtrnV = maxV;
             }
+            RS_DEBUG->print("Chunk is now %s Return.\n", this->dump().c_str());
         } else {
             RS_DEBUG->print("  This regular text needs word wrap.\n");
-            while (wordwrap(leftMargin, rightMargin)) {/* continue */}
-            rtrnV = ((RS_MText *)entities.back())->getMax();
+            RS_MText *pChunk = this->wordwrap(leftMargin, rightMargin, rtrnV);
+            while (pChunk != nullptr) {
+                pChunk = pChunk->wordwrap(leftMargin, rightMargin, rtrnV);
+            };
+            // FIXME: rtrnV = ((RS_MText *)entities.back())->getMax();
         }
     } else {
         RS_DEBUG->print("This mtext is NOT a glyph holder, so layout its children.\n");
@@ -807,100 +818,147 @@ RS_Vector RS_MText::layout(const RS_Vector &posnV, double leftMargin, double rig
     return rtrnV;
 }
 
-bool RS_MText::wordwrap(double leftMarg, double rightMarg) {
-    bool iswrap = false;
-    RS_DEBUG->print("Begin wordwrap(). hasGlyphs is %d\n", this->hasGlyphs());
+// Substantial re-write -- previous version created (on purpose, even, more or less) 
+// object tree that was completely unbalanced. Looked too amateur to endure.
 
-    if (this->hasGlyphs()) {
-        RS_DEBUG->print("Before word split, representative glyphs are:%s", this->dumpGlyphs().c_str());
+RS_MText* RS_MText::wordwrap(double leftMarg, double rightMarg, RS_Vector &nextPosn) {
+    RS_DEBUG->print("=== TEST GROUP 6 ===");
+    RS_DEBUG->print("Begin wordwrap(). leftMarg is %.1f, rightMarg is %.1f, hasGlyphs is %d\n", 
+      leftMarg, rightMarg, this->hasGlyphs());
+    RS_DEBUG->print(""); // GDB breakpoint
     
-        QList<RS_Entity *>::iterator itrGlyph = entities.end() - 1;
-        QString::iterator itrTxt = data.text.end() - 1;
-        
-        /* if method here is to start at the right and work 'backwards', *A*,
-         * can only test for condition where last char of a word *just* fits by 
-         * looking at the text just following it to see if it's a space */
-        
-        /* if, instead, method is to start at the left and work forwards, *B*,
-         * first need to sync itrTxt and itrGlyph to first char, then stop
-         * when some char does not fit, then work backwards to space.  Still, if no
-         * space found, could still be the case that a single char of chunk
-         * would fit; still need to see if text following it is a space */
-         
-        /* Try method *A* */
-        while ((itrGlyph > entities.begin()) && 
-          ((((RS_Insert *)(*itrGlyph))->getMax().x > rightMarg))) {
-            --itrTxt; while((*itrTxt).isSpace()) --itrTxt;
-            --itrGlyph;
-        }
-        //? assert (*itrTxt == ((RS_Insert *)(*itrGlyph))->getName()[0]);
-        // (should be able to run these as a test)
-        
-        if (itrGlyph == (entities.end() - 1)) { // entire line fits without wordwrap
-            return false;
-        } else if ((*(itrTxt + 1)).isSpace()) {
-            ++itrGlyph; itrTxt += 2;  // sync up to char following space
-        } else {
-            while ((itrGlyph > entities.begin()) && !(*itrTxt).isSpace()) {
-                --itrTxt; --itrGlyph;
-            }
-            if ((*itrTxt).isSpace()) {
-                // itrGlyph has overshot it, maybe to begin() entity even
-                ++itrGlyph; ++itrTxt; // place where break needs to take place
-            } else {
-                // itrGlyph has moved to begin() without finding any space
-                RS_Vector delta(leftMarg - data.insertionPoint.x,
-                  (-data.height * STDLINESPACE * data.lineSpacingFactor));
-                this->move(delta);
-                return true;
-            }
-        }
-        // wordbreak is needed; itrGlyph and itrTxt should now be in proper place
-        data.multiLine = false;
-        QList<RS_Entity *> tempents;
-        RS_MTextData datanow(this->data);
-        datanow.text.clear();
-        datanow.multiLine = true;
-        
-        tempents.push_back(new RS_MText(this, datanow));
-        tempents.push_back(new RS_MText(this, datanow));
-                
-        ((RS_MText *)(tempents.front()))->resetFrom(entities.begin(), itrGlyph, 
-          data.text.left(itrTxt - data.text.begin()));
-        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "After split, tempents.front() is %s",
-           ((RS_MText *)tempents.front())->dump().c_str());  
-          
-        ((RS_MText *)(tempents.last()))->resetFrom(itrGlyph, entities.end(), 
-          data.text.right(data.text.end() - itrTxt));
-        RS_DEBUG->print(RS_Debug::D_INFORMATIONAL, "tempents.back() is %s", 
-          ((RS_MText *)tempents.last())->dump().c_str());
-
-        RS_Vector delta(leftMarg - ((RS_MText *)tempents.last())->getInsertionPoint().x,
-          (-data.height * STDLINESPACE * data.lineSpacingFactor));
-          
-        ((RS_MText *)tempents.last())->move(delta);
-        
-        this->entities.clear();
-        
-        //XXX this->clear(); // this removes all the glyph insert pointers *and deletes them*
-        // (including the ones just copied to tempents)
-        
-        this->entities.swap(tempents);
-        iswrap = true;
-        
-    } else {
-        RS_MText *pLastChild = (RS_MText *)entities.takeLast();
-        while (pLastChild->wordwrap(leftMarg, rightMarg)) {
-            entities.append(pLastChild->entities);
-            pLastChild->entities.clear();
-            delete pLastChild;
-
-            pLastChild = (RS_MText *)entities.takeLast();
-        }
-        iswrap = false; // since childs are done with it
+    if (!(this->hasGlyphs())) {
+        RS_DEBUG->print("Error - this should only be called on glyph-holders.\n");
+        return nullptr;
     }
-    return iswrap;
+
+    RS_DEBUG->print("Before word split, have\n%s", this->dumpGlyphs().c_str());
+
+    QList<RS_Entity *>::iterator itrGlyph = entities.end() - 1;
+    QString::iterator itrTxt = data.text.end() - 1;
+    
+    /* Works best to start at the right glyph and work 'backwards'.  Need to
+     * check for condition where last char of a word *just* fits by looking 
+     * at the text just following it to see if it's a space */
+
+    while ((itrGlyph > entities.begin()) && 
+      ((((RS_Insert *)(*itrGlyph))->getMax().x > rightMarg))) {
+        --itrTxt; while((*itrTxt).isSpace()) --itrTxt;
+        --itrGlyph;
+    }
+    //? assert (*itrTxt == ((RS_Insert *)(*itrGlyph))->getName()[0]);
+    // (should be able to run these as a test)
+    
+    if (itrGlyph == (entities.end() - 1)) { // entire line fits without wordwrap
+        RS_DEBUG->print("No wordbreak needed here. Last glyph is \n%s Return.",
+          ((RS_Insert *)*itrGlyph)->dump().c_str());
+
+        nextPosn.set(this->maxV.x, this->maxV.y);
+        RS_DEBUG->print("Next insert position: %.1f, %.1f\n", nextPosn.x, nextPosn.y);
+          
+        return nullptr;
+    } else if ((*(itrTxt + 1)).isSpace()) {
+        ++itrGlyph; itrTxt += 2;  // sync up to char following space
+    } else {
+        while ((itrGlyph > entities.begin()) && !(*itrTxt).isSpace()) {
+            --itrTxt; --itrGlyph;
+        }
+        if ((*itrTxt).isSpace()) {
+            // itrGlyph has overshot it, maybe to begin() entity even
+            ++itrGlyph; ++itrTxt; // place where break needs to take place
+        } else {
+            // itrGlyph has moved to begin() without finding any space
+            RS_Vector delta(leftMarg - data.insertionPoint.x,
+              (-data.height * STDLINESPACE * data.lineSpacingFactor));
+            this->move(delta);
+            nextPosn.set(this->maxV.x, this->maxV.y);
+            RS_DEBUG->print("Next insert position: %.1f, %.1f\n", nextPosn.x, nextPosn.y);
+            
+            RS_DEBUG->print("Even first word won't fit on remainder of line.\n");
+            RS_DEBUG->print("Only hope is to move chunk down to next line.\n");
+            RS_DEBUG->print("And that only if chunk is moved left by some amount. Delta is (%.1f,%.1f).\n",
+              delta.x, delta.y);
+            RS_DEBUG->print("Chunk is now %s Return.\n", this->dump().c_str());
+            
+            return this;
+        }
+    }
+    
+    RS_DEBUG->print("Word break found at glyph index %d. Glyph is\n%s\n",
+        (itrGlyph - entities.begin()), ((RS_Insert *)*itrGlyph)->dump().c_str()
+    );
+    
+    // have found location of wordbreak now -- itrGlyph and itrTxt should now 
+    // be in proper place -- so make it happen
+
+    RS_MText *headchunk = nullptr;
+    RS_MText *tailchunk = nullptr;
+
+    RS_MTextData datanow(this->data);
+    datanow.text.clear();
+    // ^^ else mtext constructor will call setText() - Not Good here
+    datanow.multiLine = false;
+        
+    if ((this->parent != nullptr) && (parent->rtti() == RS2::EntityMText) &&
+      (this == ((RS_MText *)parent)->lastEntity())) { 
+        // can append new wordwrap 'tail' to parent as sibling of this
+        RS_DEBUG->print("Append new wordwrap 'tail' to parent as sibling\n");
+
+        headchunk = this; // here, convenience only - not otherwise used
+        tailchunk = new RS_MText(this->parent, datanow);
+
+        tailchunk->resetFrom(itrGlyph, entities.end(), 
+              data.text.right(data.text.end() - itrTxt));
+              
+        RS_Vector delta(leftMarg - tailchunk->getInsertionPoint().x,
+          (-data.height * STDLINESPACE * data.lineSpacingFactor));
+        tailchunk->move(delta);
+        nextPosn.set(tailchunk->getMax().x, tailchunk->getMax().y);
+        RS_DEBUG->print("Next insert position: %.1f, %.1f\n", nextPosn.x, nextPosn.y);
+              
+        data.text.resize(itrTxt - data.text.begin());
+//XXX        entities.resize(itrGlyph - entities.begin());
+        entities.erase(itrGlyph, entities.end());
+
+        maxV.x = ((RS_Insert *)entities.back())->getMax().x;
+        this->parent->appendEntity(tailchunk);
+    } else {
+        RS_DEBUG->print("Convert glyph-holder to instead hold head and tail chunks.\n");
+
+        QList<RS_Entity *> tempents;
+
+        headchunk = new RS_MText(this, datanow);
+        tailchunk = new RS_MText(this, datanow);
+
+        headchunk->resetFrom(entities.begin(), itrGlyph, 
+          data.text.left(itrTxt - data.text.begin()));
+        tempents.push_back(headchunk);
+        
+        tailchunk->resetFrom(itrGlyph, entities.end(), 
+          data.text.right(data.text.end() - itrTxt));
+
+        RS_Vector delta(leftMarg - tailchunk->getInsertionPoint().x,
+          (-data.height * STDLINESPACE * data.lineSpacingFactor));
+        tailchunk->move(delta);
+        nextPosn.set(tailchunk->getMax().x, tailchunk->getMax().y);
+        RS_DEBUG->print("Next insert position: %.1f, %.1f\n", nextPosn.x, nextPosn.y);
+
+        tempents.push_back(tailchunk);
+
+        this->entities.swap(tempents);
+        tempents.clear();
+        //? clear tempents before it goes out of scope - it now contains
+        // copies of the glyph pointers - okay to erase them from tempents now,
+        // but *not* delete them as might happen if tempents is otherwise destructed
+
+        // TODO - TEST to make sure no glyph deletion occurs
+    }
+    RS_DEBUG->print("Head chunk is now %s Tail chunk is now %s",
+                  headchunk->dump().c_str(), tailchunk->dump().c_str()
+    );
+    return tailchunk;
 }
+
 
 /**
  * Needed during word wrap to change out a child object's text and
@@ -921,7 +979,7 @@ void RS_MText::resetFrom(
     // well enough, since data is otherwise copied faithfully
     
     maxV.set(((RS_Insert *)entities.back())->getMax().x, data.insertionPoint.y);
-    // ^^ Corrected from getInsertionPoint() to getMax()
+    // ^^ FIXED to include width of last letter/glyph
     
     minV.set(data.insertionPoint.x, ((RS_Insert *)entities.front())->getInsertionPoint().y);
     // not strictly accurate because of glyph descenders, but good enough

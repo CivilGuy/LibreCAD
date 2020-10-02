@@ -260,6 +260,7 @@ public:
     virtual RS_Entity* clone() const override;
     
     std::string dump(); //XXX DEBUG
+    /*std::string dumpGlyph(const RS_Insert *gl); //XXX DEBUG - delete from final version*/
     std::string dumpGlyphs(); //XXX DEBUG - delete from final version
 
     /**	@return RS2::EntityText */
@@ -404,15 +405,20 @@ protected:
 	  */
     RS_MText* buildStackAssy(const RS_MTextData& data, const LC_CodeTag& codeTag);
     
-    /**
-     * If calling entity is a glyph holder, find location within text where line break should occur, if 
-     * any; if found, copy/split glyphs into two new mtext entities as appropriate, and replace the current 
-     * glyph entities with the two new mtext entities. 
-     * If calling entity is not a glyph holder, call wordwrap on its last child. On return, replace the 
-     * last child with the two children the child now has.
-     * @return true while further wordwrap is needed, then @return false.
-     */
-    bool wordwrap(double leftMarg, double rightMarg);
+    /** 
+     * Figures where in text the word break needs to occur (if at all), then splits the
+     * mtext there.  If the mtext has a parent and the current mtext is the last child of that
+     * parent, the new 'tail' mtext is placed as a sibling to the current mtext; else 
+     * changes the current mtext to be the parent of the 'head' and 'tail' glyph-holding 
+     * mtexts.
+     *
+     * Refigures the position and size of both 'head' and 'tail'.
+     *
+     * Updates the position for the next possible mtext in the @ref nextPosn.
+     * 
+     * @returns a pointer to the 'tail' mtext so that it can be further wordwrapped as needed.
+     **/
+    RS_MText* wordwrap(double leftMarg, double rightMarg, RS_Vector &nextPosn);
     
     /**
      * Used during wordwrap; avoid unwanted call to setText() during initial construction.
